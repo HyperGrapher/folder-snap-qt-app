@@ -115,8 +115,8 @@ Exit: persistence values round-trip without semantic loss, and unsafe paths/iden
 
 - [x] Implement `%LOCALAPPDATA%\FolderSnap` paths plus a mandatory development/test override.
 - [x] Implement config defaults, load/save, size limits, schema checks, and malformed-config preservation.
-- [ ] Implement gzip snapshot encoding/decoding with zlib and the 1 GiB decoded-size guard.
-- [ ] Implement the global lightweight history index and payload-availability detection.
+- [x] Implement gzip snapshot encoding/decoding with zlib and the 1 GiB decoded-size guard.
+- [x] Implement the global lightweight history index and payload-availability detection.
 - [ ] Serialize history mutations and prove concurrent saves cannot lose records.
 - [ ] Implement description edits without mutating immutable snapshot payloads.
 - [ ] Implement per-root retention after successful saves.

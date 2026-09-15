@@ -30,8 +30,9 @@ including an error code and a one-based rule line when applicable.
   Irrelevant schedule JSON fields are rejected, not silently converted. A manual
   schedule cannot contain a next-due timestamp. Due-time calculation comes later.
 - Configuration/index JSON uses two-space indentation; snapshot JSON is compact.
-  Decode limits are 16 MiB, 32 MiB and 1 GiB respectively. The future gzip reader must
-  enforce the snapshot limit while decompressing, before allocating the full output.
+  Decode limits are 16 MiB, 32 MiB and 1 GiB respectively. Snapshot payloads use
+  gzip streams, and the reader enforces the decoded limit while inflating, before
+  accepting the full output.
 
 ## Windows paths and exclusions
 
@@ -68,5 +69,6 @@ replacement. Missing documents return defaults; malformed or schema-incompatible
 documents are moved to `corrupt/` before defaults are returned. Filesystem failures
 are reported instead of being misclassified as corrupt. `StoragePaths::fromDataDirectory`
 requires an absolute path for development and test isolation; `forCurrentUser()` uses
-Qt's per-user local application-data location. Compressed snapshots, scanning and live
-UI models are not implemented by this milestone. No watched-folder contents are modified.
+Qt's per-user local application-data location. Snapshot payloads are gzip-compressed,
+with availability detected from the payload filename. Scanning and live UI models are
+not implemented by this milestone. No watched-folder contents are modified.

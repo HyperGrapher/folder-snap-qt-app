@@ -39,9 +39,10 @@ add_library(folder_snap_core STATIC
     src/storage/AtomicFile.h src/storage/AtomicFile.cpp
     src/storage/ConfigurationStore.h src/storage/ConfigurationStore.cpp
     src/storage/StoragePaths.h src/storage/StoragePaths.cpp
+    src/storage/SnapshotStore.h src/storage/SnapshotStore.cpp
 )
 target_include_directories(folder_snap_core PUBLIC src)
-target_link_libraries(folder_snap_core PUBLIC Qt6::Core)
+target_link_libraries(folder_snap_core PUBLIC Qt6::Core ZLIB::ZLIB)
 
 set(folder_snap_qml_files
     src/qml/Main.qml

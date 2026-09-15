@@ -3,8 +3,10 @@
 #include <QtTest>
 
 #include "domain/DomainError.h"
+#include "domain/JsonCodec.h"
 #include "storage/AtomicFile.h"
 #include "storage/ConfigurationStore.h"
+#include "storage/SnapshotStore.h"
 
 namespace
 {
@@ -104,6 +106,96 @@ class StorageTest final : public QObject
         QVERIFY(result.restoredDefaults());
         QVERIFY(result.value.isEmpty());
         QVERIFY(QFile::exists(result.preservedCorruptFile));
+    }
+
+    void snapshotPayloadRoundTripsAsGzip()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        QFile fixtureFile(QString(FOLDERSNAP_FIXTURE_DIR) + "/snapshot-v2.json");
+        QVERIFY(fixtureFile.open(QIODevice::ReadOnly));
+        const auto source = foldersnap::decodeSnapshot(fixtureFile.readAll());
+        const foldersnap::SnapshotStore store(paths);
+
+        const qint64 compressedBytes = store.saveSnapshot(source);
+        QVERIFY(compressedBytes > 0);
+        const QString path = store.payloadPath(source.header.snapshotId);
+        QVERIFY(QFile::exists(path));
+        const QByteArray payload = foldersnap::readFileLimited(path, 1024);
+        QCOMPARE(payload.left(2), QByteArray::fromHex("1f8b"));
+        QVERIFY(store.hasPayload(source.header.snapshotId));
+        QVERIFY(store.loadSnapshot(source.header.snapshotId).header == source.header);
+        QVERIFY(store.loadSnapshot(source.header.snapshotId).entries == source.entries);
+        QCOMPARE(
+            [&]()
+            {
+                try
+                {
+                    (void)store.loadSnapshot("33333333-3333-4333-8333-333333333333");
+                }
+                catch (const foldersnap::DomainError &error)
+                {
+                    return error.code();
+                }
+                return foldersnap::ErrorCode::InvalidData;
+            }(),
+            foldersnap::ErrorCode::MissingPayload);
+    }
+
+    void snapshotDecodeLimitAndTruncationAreRejected()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        QFile fixtureFile(QString(FOLDERSNAP_FIXTURE_DIR) + "/snapshot-v2.json");
+        QVERIFY(fixtureFile.open(QIODevice::ReadOnly));
+        const auto source = foldersnap::decodeSnapshot(fixtureFile.readAll());
+        const foldersnap::SnapshotStore limitedStore(paths, 32);
+        QVERIFY(limitedStore.saveSnapshot(source) > 0);
+        try
+        {
+            (void)limitedStore.loadSnapshot(source.header.snapshotId);
+            QFAIL("An oversized decoded payload was accepted.");
+        }
+        catch (const foldersnap::DomainError &error)
+        {
+            QCOMPARE(error.code(), foldersnap::ErrorCode::SizeLimit);
+        }
+
+        const QString path = limitedStore.payloadPath(source.header.snapshotId);
+        QByteArray truncated = foldersnap::readFileLimited(path, 1024 * 1024);
+        QVERIFY(truncated.size() > 8);
+        truncated.chop(4);
+        foldersnap::replaceFileAtomically(path, truncated);
+        const foldersnap::SnapshotStore normalStore(paths);
+        try
+        {
+            (void)normalStore.loadSnapshot(source.header.snapshotId);
+            QFAIL("A truncated gzip payload was accepted.");
+        }
+        catch (const foldersnap::DomainError &error)
+        {
+            QCOMPARE(error.code(), foldersnap::ErrorCode::InvalidData);
+        }
+    }
+
+    void historyReportsPayloadAvailability()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        QFile fixtureFile(QString(FOLDERSNAP_FIXTURE_DIR) + "/snapshot-v2.json");
+        QVERIFY(fixtureFile.open(QIODevice::ReadOnly));
+        const auto source = foldersnap::decodeSnapshot(fixtureFile.readAll());
+        const foldersnap::ConfigurationStore configurationStore(paths);
+        configurationStore.saveHistoryIndex({historyRecord()});
+        QVERIFY(!configurationStore.loadHistoryIndex().value.first().payloadAvailable);
+
+        const foldersnap::SnapshotStore snapshotStore(paths);
+        QVERIFY(snapshotStore.saveSnapshot(source) > 0);
+        const auto loaded = configurationStore.loadHistoryIndex();
+        QVERIFY(loaded.value.first().payloadAvailable);
     }
 };
 

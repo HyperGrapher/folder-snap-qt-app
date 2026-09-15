@@ -7,6 +7,7 @@
 #include "domain/DomainError.h"
 #include "domain/JsonCodec.h"
 #include "storage/AtomicFile.h"
+#include "storage/SnapshotStore.h"
 
 namespace foldersnap
 {
@@ -26,7 +27,8 @@ LoadResult<Value> loadDocument(const QString &path, const StoragePaths &paths,
 
     try
     {
-        return {decoder(readFileLimited(path, maximumBytes)), {}};
+        auto result = LoadResult<Value>{decoder(readFileLimited(path, maximumBytes)), {}};
+        return result;
     }
     catch (const DomainError &error)
     {
@@ -59,8 +61,14 @@ void ConfigurationStore::saveConfiguration(const Configuration &configuration) c
 
 LoadResult<QList<HistoryRecord>> ConfigurationStore::loadHistoryIndex() const
 {
-    return loadDocument(m_paths.historyIndexFile, m_paths, kHistoryIndexMaximumBytes,
-                        QList<HistoryRecord>{}, decodeHistoryIndex);
+    auto result = loadDocument(m_paths.historyIndexFile, m_paths, kHistoryIndexMaximumBytes,
+                               QList<HistoryRecord>{}, decodeHistoryIndex);
+    for (auto &record : result.value)
+    {
+        record.payloadAvailable =
+            QFileInfo::exists(snapshotPayloadPath(m_paths, record.snapshotId));
+    }
+    return result;
 }
 
 void ConfigurationStore::saveHistoryIndex(const QList<HistoryRecord> &records) const
