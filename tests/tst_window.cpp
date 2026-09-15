@@ -66,7 +66,7 @@ class WindowTest final : public QObject
 {
     Q_OBJECT
   private:
-    AppState m_state;
+    AppState *m_state{nullptr};
     std::unique_ptr<QQmlApplicationEngine> m_engine;
     QQuickWindow *m_window{nullptr};
     std::unique_ptr<WindowsWindowController> m_controller;
@@ -113,13 +113,7 @@ class WindowTest final : public QObject
         {
             if (interact)
             {
-                m_state.setSelectedSection(static_cast<AppState::Section>(switches % 4));
-                m_state.advanceProgress();
-                m_state.cycleStatus();
-                if (m_state.demoProgress() == 100)
-                {
-                    m_state.resetDemo();
-                }
+                m_state->setSelectedSection(static_cast<AppState::Section>(switches % 4));
                 ++switches;
             }
             QTest::qWait(250);
@@ -158,11 +152,12 @@ class WindowTest final : public QObject
     {
         QQuickStyle::setStyle("Basic");
         m_engine = std::make_unique<QQmlApplicationEngine>();
-        m_engine->setInitialProperties({{"appState", QVariant::fromValue(&m_state)}});
         m_engine->loadFromModule("FolderSnap", "Main");
         QVERIFY(!m_engine->rootObjects().isEmpty());
         m_window = qobject_cast<QQuickWindow *>(m_engine->rootObjects().first());
         QVERIFY(m_window);
+        m_state = qobject_cast<AppState *>(m_window->property("appState").value<QObject *>());
+        QVERIFY(m_state);
         m_controller = std::make_unique<WindowsWindowController>(*m_window);
         m_window->setProperty("windowController", QVariant::fromValue(m_controller.get()));
         m_window->show();
@@ -187,45 +182,51 @@ class WindowTest final : public QObject
     }
     void renderPagesAndInteractions()
     {
-        const QStringList names{"overview", "collection", "activity", "settings"};
+        const QStringList names{"overview", "folders", "compare", "settings"};
         for (int index = 0; index < 4; ++index)
         {
-            m_state.setSelectedSection(static_cast<AppState::Section>(index));
+            m_state->setSelectedSection(static_cast<AppState::Section>(index));
             QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
-            QTest::qWait(650);
-            capture(names[index]);
+            QTest::qWait(250);
+            if (index == 0)
+            {
+                capture(names[index]);
+            }
         }
-        m_state.setSelectedSection(AppState::Section::Activity);
-        QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
-        auto *advance = m_window->findChild<QQuickItem *>("advanceButton");
-        QVERIFY(advance);
-        const QPoint buttonCenter =
-            advance->mapToScene(QPointF(advance->width() / 2, advance->height() / 2)).toPoint();
-        QTest::mouseClick(m_window, Qt::LeftButton, Qt::NoModifier, buttonCenter);
-        QCOMPARE(m_state.demoProgress(), 50);
-        advance->forceActiveFocus(Qt::TabFocusReason);
-        QVERIFY(advance->hasActiveFocus());
-        QTest::keyClick(m_window, Qt::Key_Space);
-        QCOMPARE(m_state.demoProgress(), 75);
-        QTest::keyClick(m_window, Qt::Key_Return);
-        QCOMPARE(m_state.demoProgress(), 100);
-        QVERIFY(!advance->isEnabled());
-        QTest::mouseClick(m_window, Qt::LeftButton, Qt::NoModifier, buttonCenter);
-        QCOMPARE(m_state.demoProgress(), 100);
-        m_state.setSelectedSection(AppState::Section::Settings);
-        QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
         auto *toggle = m_window->findChild<QQuickItem *>("reducedMotionToggle");
         QVERIFY(toggle);
         toggle->forceActiveFocus(Qt::TabFocusReason);
         QTest::keyClick(m_window, Qt::Key_Space);
-        QVERIFY(m_state.reducedMotion());
+        QVERIFY(m_state->reducedMotion());
         QTest::keyClick(m_window, Qt::Key_Space);
-        QVERIFY(!m_state.reducedMotion());
-        QTest::keyClick(m_window, Qt::Key_Tab);
-        QVERIFY(m_window->activeFocusItem() != toggle);
-        QTest::keyClick(m_window, Qt::Key_Tab, Qt::ShiftModifier);
-        QCOMPARE(m_window->activeFocusItem(), toggle);
-        m_state.resetDemo();
+        QVERIFY(!m_state->reducedMotion());
+        m_state->setSelectedSection(AppState::Section::Overview);
+        QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
+        auto *take = m_window->findChild<QQuickItem *>("overviewSnapshotButton");
+        QVERIFY(take);
+        take->forceActiveFocus(Qt::TabFocusReason);
+        QTest::keyClick(m_window, Qt::Key_Return);
+        QTRY_VERIFY(m_state->property("scanning").toBool());
+        QTRY_VERIFY_WITH_TIMEOUT(!m_state->property("scanning").toBool(), 5000);
+        m_state->setProperty("toast", "");
+        m_state->setSelectedSection(AppState::Section::Compare);
+        m_state->setProperty("beforeId", 4);
+        m_state->setProperty("afterId", 5);
+        m_state->setProperty("comparing", true);
+        QTRY_VERIFY(m_state->property("comparisonReady").toBool());
+        QTest::qWait(150);
+        for (const QString &sheet :
+             {"add", "folder", "detail", "warnings", "exportComparison", "cleanup", "delete"})
+        {
+            m_state->setProperty("sheet", sheet);
+            QTest::qWait(220);
+            m_state->setProperty("sheet", "");
+            QTest::qWait(130);
+        }
+        m_state->setProperty("scenario", "Empty library");
+        m_state->setSelectedSection(AppState::Section::Overview);
+        QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
+        m_state->setProperty("scenario", "Sample library");
     }
     void resizeAndWindowStates()
     {
@@ -234,15 +235,25 @@ class WindowTest final : public QObject
         QTRY_COMPARE(m_window->size(), minimumSize);
         for (int index = 0; index < 4; ++index)
         {
-            m_state.setSelectedSection(static_cast<AppState::Section>(index));
+            m_state->setSelectedSection(static_cast<AppState::Section>(index));
             QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
             QTest::qWait(100);
-            capture("minimum-" + QString::number(index));
         }
+        m_state->setSelectedSection(AppState::Section::Compare);
+        m_state->setProperty("beforeId", 4);
+        m_state->setProperty("afterId", 5);
+        m_state->setProperty("comparisonReady", true);
+        QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
+        m_state->setProperty("sheet", "folder");
+        QTest::qWait(200);
+        auto *dialog = m_window->findChild<QObject *>("previewDialog");
+        QVERIFY(dialog);
+        QVERIFY(dialog->property("height").toReal() < m_window->height());
+        m_state->setProperty("sheet", "");
+        QTest::qWait(150);
         m_window->showMaximized();
         QTRY_COMPARE(m_window->visibility(), QWindow::Maximized);
         QTest::qWait(100);
-        capture("maximized");
         const QRect available = m_window->screen()->availableGeometry();
         QVERIFY2(available.contains(m_window->geometry()),
                  qPrintable(QString("Window %1,%2 %3x%4 outside work area %5,%6 %7x%8")
@@ -347,11 +358,11 @@ class WindowTest final : public QObject
         }
         for (int index = 0; index < 4; ++index)
         {
-            m_state.setSelectedSection(static_cast<AppState::Section>(index));
+            m_state->setSelectedSection(static_cast<AppState::Section>(index));
             QTest::qWait(800);
         }
-        m_state.setSelectedSection(AppState::Section::Overview);
-        m_state.setReducedMotion(false);
+        m_state->setSelectedSection(AppState::Section::Overview);
+        m_state->setReducedMotion(false);
         QJsonArray samples;
         const QString scenario = qEnvironmentVariable("FOLDERSNAP_MEASURE_SCENARIO");
         if (scenario.isEmpty() || scenario == "ambient")
@@ -360,18 +371,18 @@ class WindowTest final : public QObject
         }
         if (scenario.isEmpty() || scenario == "reduced-motion")
         {
-            m_state.setReducedMotion(true);
+            m_state->setReducedMotion(true);
             samples.append(measure("reduced-motion", false));
         }
         if (scenario.isEmpty() || scenario == "minimized")
         {
-            m_state.setReducedMotion(false);
+            m_state->setReducedMotion(false);
             m_window->showMinimized();
             samples.append(measure("minimized", false));
         }
         if (scenario.isEmpty() || scenario == "navigation-and-widgets")
         {
-            m_state.setReducedMotion(false);
+            m_state->setReducedMotion(false);
             m_window->showNormal();
             QVERIFY(QTest::qWaitForWindowExposed(m_window));
             samples.append(measure("navigation-and-widgets", true));

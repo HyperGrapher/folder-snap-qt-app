@@ -11,19 +11,24 @@ TestCase {
     MotionPolicy {
         id: policy
     }
-    ProgressRing {
-        id: ring
-        width: 180
-        height: 180
-        animationsEnabled: policy.transitionsEnabled
+    function init() {
+        policy.windowVisible = true;
+        policy.windowExposed = true;
+        policy.windowMinimized = false;
+        policy.reducedMotion = false;
+        policy.backgroundMotionEnabled = true;
     }
-    function test_reduceActiveProgress() {
-        ring.value = 100;
-        wait(30);
-        verify(ring.displayedValue < 100);
+    function test_motionPreferences() {
+        verify(policy.transitionsEnabled);
+        verify(policy.ambientEnabled);
         policy.reducedMotion = true;
-        compare(ring.displayedValue, 100);
-        ring.value = 25;
-        compare(ring.displayedValue, 25);
+        verify(!policy.transitionsEnabled);
+        verify(!policy.ambientEnabled);
+        policy.reducedMotion = false;
+        policy.backgroundMotionEnabled = false;
+        verify(policy.transitionsEnabled);
+        verify(!policy.ambientEnabled);
+        policy.windowMinimized = true;
+        verify(!policy.transitionsEnabled);
     }
 }

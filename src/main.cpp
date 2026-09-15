@@ -1,4 +1,3 @@
-#include "AppState.h"
 #include "WindowsWindowController.h"
 #include <QGuiApplication>
 #include <QIcon>
@@ -16,9 +15,7 @@ int main(int argc, char *argv[])
     QGuiApplication::setOrganizationName("FolderSnap");
     QGuiApplication::setWindowIcon(QIcon(":/resources/icons/foldersnap-icon.png"));
     QQuickStyle::setStyle("Basic");
-    AppState appState;
     QQmlApplicationEngine engine;
-    engine.setInitialProperties({{"appState", QVariant::fromValue(&appState)}});
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         []() { QCoreApplication::exit(1); }, Qt::QueuedConnection);

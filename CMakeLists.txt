@@ -38,17 +38,27 @@ set(folder_snap_qml_files
     src/qml/navigation/PageFrame.qml
     src/qml/controls/ActionButton.qml
     src/qml/controls/WindowButton.qml
-    src/qml/controls/NavigationButton.qml
     src/qml/controls/ToggleSwitch.qml
-    src/qml/controls/DemoCard.qml
-    src/qml/controls/ProgressRing.qml
-    src/qml/controls/StatusCard.qml
     src/qml/controls/PageHeading.qml
     src/qml/controls/BodyText.qml
     src/qml/pages/OverviewPage.qml
-    src/qml/pages/CollectionPage.qml
-    src/qml/pages/ActivityPage.qml
+    src/qml/pages/FoldersPage.qml
+    src/qml/pages/ComparePage.qml
     src/qml/pages/SettingsPage.qml
+    src/qml/controls/LabelText.qml
+    src/qml/controls/Glyph.qml
+    src/qml/controls/Panel.qml
+    src/qml/controls/Badge.qml
+    src/qml/controls/SearchField.qml
+    src/qml/controls/SelectBox.qml
+    src/qml/controls/SettingRow.qml
+    src/qml/controls/EmptyState.qml
+    src/qml/controls/Sparkline.qml
+    src/qml/controls/SnapshotArtwork.qml
+    src/qml/controls/FolderCard.qml
+    src/qml/controls/SnapshotSlot.qml
+    src/qml/preview/UiPreviewState.qml
+    src/qml/dialogs/PreviewDialog.qml
     src/qml/effects/AmbientBackground.qml
 )
 
@@ -76,17 +86,11 @@ qt_add_resources(
     folder_snap_ui app_resources
     PREFIX /
     FILES
-        resources/icons/activity.svg
-        resources/icons/arrow.svg
         resources/icons/close.svg
-        resources/icons/collection.svg
         resources/icons/foldersnap-icon.png
         resources/icons/maximize.svg
         resources/icons/minimize.svg
-        resources/icons/overview.svg
         resources/icons/restore.svg
-        resources/icons/settings.svg
-        resources/icons/spark.svg
 )
 qt_add_shaders(
     folder_snap_ui ambient_shaders

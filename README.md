@@ -55,8 +55,11 @@ Deployment includes Qt's runtime libraries and QML plugins. No installer is prov
 ## What to try
 
 - Switch pages quickly; selections retarget without queuing navigation.
-- Select a collection card, leave the page, and return. Selection and scroll remain.
-- In Activity, advance by 25%, change the status, or start fresh.
+- Add a sample folder, edit folder preferences, and take a simulated snapshot.
+- In Compare, choose two timeline moments, run the comparison, search/filter the tree,
+  and review Added items through the two-stage cleanup preview.
+- In Settings, use **Explore the preview** to inspect empty, missing-payload, warning,
+  failure, and large-comparison states.
 - Use Tab/Shift+Tab, Space, and Enter to operate controls. Focus has a visible outline.
 - Turn on Reduced motion or turn off Background motion in Settings.
 - Resize from every edge, double-click empty title space, and maximize/restore.
@@ -69,21 +72,22 @@ Deployment includes Qt's runtime libraries and QML plugins. No installer is prov
 - `src/qml/navigation/`: stable sidebar and retained-page transition host.
 - `src/qml/effects/AmbientBackground.qml` and `resources/shaders/ambient.frag`:
   palette interpolation and the four-blob fragment shader.
-- `src/AppState.*`: explicit mock actions and session preferences.
+- `src/qml/preview/UiPreviewState.qml`: deterministic in-memory product scenarios.
+- `src/AppState.*`: navigation and motion preferences shared with C++ tests.
 - `src/WindowsWindowController.*`: native frame, hit testing, work-area sizing,
   corner clipping, and window exposure. Keep Win32 APIs out of QML.
 
-`Main.qml` receives an application-owned `AppState`. Child components receive it
-explicitly. `MotionPolicy` combines user preferences with window visibility and
-exposure. Four page instances are created once. During transitions all page input
-is disabled; only the final selected page becomes enabled. Hidden pages retain
-their state without decorative animation. No navigation screenshots are cached.
+`Main.qml` owns an in-memory `UiPreviewState`. Child components receive it explicitly.
+`MotionPolicy` combines user preferences with window visibility and exposure. Four
+page instances are created once. During transitions all page input is disabled;
+only the final selected page becomes enabled. Hidden pages retain their state
+without decorative animation.
 
 ## Windows behavior and limitations
 
 Windows 10 uses a real native rounded region, updated for size and DPI changes.
 Windows owns a successfully applied region. Corners are square while maximized.
-The default window is 1100 × 720, with a normal minimum of 860 × 600 logical pixels.
+The default window is 1280 × 840, with a normal minimum of 960 × 680 logical pixels.
 Initial and minimum dimensions are capped by the available screen area so high
 display scaling does not force the maximized window over the taskbar. The sidebar's
 decorative note is hidden when vertical space is limited; page content remains scrollable.
@@ -105,26 +109,17 @@ References: [Microsoft rounded-window guidance](https://learn.microsoft.com/en-u
 
 ## Verification
 
-See [the verification report](docs/VERIFICATION.md) for measured results and remaining
-manual checks. CTest runs state tests, offscreen QML tests, and a real desktop-window
-test. The desktop test requires an unlocked interactive Windows session and a graphics
-backend. For a headless environment, run only:
+CTest runs state tests, offscreen QML tests, and a real desktop-window test. The
+desktop test requires an unlocked interactive Windows session and a graphics backend.
+For a headless environment, run only:
 
 ```powershell
 ctest --test-dir build -R '^(appstate|ui)$' --output-on-failure
 ```
 
-The desktop test writes rendered screenshots under `build/verification/scale-*`.
-To repeat the rendering and geometry checks at a simulated Qt display scale:
-
-```powershell
-$env:QT_SCALE_FACTOR = '1.5'
-& .\build\tst_window.exe
-Remove-Item Env:QT_SCALE_FACTOR
-```
-
-This checks Qt scaling; it does not replace moving between real monitors with
-different Windows scaling settings.
+The desktop test keeps the overview screenshot at
+`build/verification/scale-1.00/overview.png` and checks all main pages and dialogs
+at the normal and minimum window sizes.
 
 For four 60-second resource samples (longer than the ordinary CTest timeout):
 

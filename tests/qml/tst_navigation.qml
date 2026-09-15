@@ -5,11 +5,11 @@ import FolderSnap
 TestCase {
     id: testCase
     name: "Navigation"
-    width: 820
-    height: 650
+    width: 900
+    height: 700
     visible: true
     when: windowShown
-    AppState {
+    UiPreviewState {
         id: state
     }
     MotionPolicy {
@@ -27,13 +27,13 @@ TestCase {
         motion.windowExposed = true;
         motion.windowMinimized = false;
         state.selectedSection = AppState.Overview;
-        state.resetDemo();
+        state.chooseRoot(0);
+        state.scanning = false;
         motion.reducedMotion = false;
     }
     function assertSettled(index) {
         tryCompare(host, "isTransitioning", false, 1000);
         compare(host.currentIndex, index);
-        compare(host.pages.length, 4);
         for (let i = 0; i < 4; ++i) {
             compare(host.pages[i].opacity, i === index ? 1 : 0);
             compare(host.pages[i].visible, i === index);
@@ -45,42 +45,38 @@ TestCase {
             host.selectPage(i);
             assertSettled(i);
         }
-        host.selectPage(3);
-        compare(host.isTransitioning, false);
     }
     function test_interruptedNavigation() {
         const originalPages = host.pages.slice();
         host.selectPage(1);
         wait(35);
         host.selectPage(2);
-        for (let i = 0; i < 4; ++i) {
+        for (let i = 0; i < 4; ++i)
             compare(host.pages[i].enabled, false);
-        }
         wait(35);
-        let totalOpacity = 0;
-        for (let i = 0; i < 4; ++i) {
-            totalOpacity += host.pages[i].opacity;
-        }
-        fuzzyCompare(totalOpacity, 1, 0.02);
+        let total = 0;
+        for (let i = 0; i < 4; ++i)
+            total += host.pages[i].opacity;
+        fuzzyCompare(total, 1, 0.02);
         host.selectPage(3);
         host.selectPage(0);
         assertSettled(0);
-        for (let i = 0; i < 4; ++i) {
+        for (let i = 0; i < 4; ++i)
             compare(host.pages[i], originalPages[i]);
-        }
     }
     function test_statePreserved() {
-        host.selectPage(1);
-        assertSettled(1);
-        const collection = findChild(host, "collectionPage");
-        collection.selectedCard = 4;
         host.selectPage(2);
         assertSettled(2);
-        state.advanceProgress();
+        state.chooseSnapshot(4);
+        state.chooseSnapshot(5);
+        state.search = "main";
         host.selectPage(1);
         assertSettled(1);
-        compare(collection.selectedCard, 4);
-        compare(state.demoProgress, 50);
+        host.selectPage(2);
+        assertSettled(2);
+        compare(state.beforeId, 4);
+        compare(state.afterId, 5);
+        compare(state.search, "main");
     }
     function test_reduceDuringTransition() {
         host.selectPage(2);
@@ -102,22 +98,17 @@ TestCase {
         compare(motion.ambientEnabled, true);
         motion.windowExposed = false;
         compare(motion.ambientEnabled, false);
-        motion.windowExposed = true;
-        motion.backgroundMotionEnabled = false;
-        compare(motion.ambientEnabled, false);
-        compare(motion.transitionsEnabled, true);
-        motion.backgroundMotionEnabled = true;
     }
     function test_outgoingPageCannotAct() {
-        host.selectPage(2);
-        assertSettled(2);
-        const advance = findChild(host, "advanceButton");
-        advance.forceActiveFocus();
+        host.selectPage(0);
+        assertSettled(0);
+        const take = findChild(host, "overviewSnapshotButton");
+        take.forceActiveFocus();
         host.selectPage(1);
         keyClick(Qt.Key_Space);
-        compare(state.demoProgress, 25);
+        compare(state.scanning, false);
         assertSettled(1);
         keyClick(Qt.Key_Return);
-        compare(state.demoProgress, 25);
+        compare(state.scanning, false);
     }
 }

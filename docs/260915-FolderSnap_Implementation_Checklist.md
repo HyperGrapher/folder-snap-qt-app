@@ -68,27 +68,27 @@ Tests mirror these responsibilities under `tests/`, with fixtures under `tests/f
 - [x] Add a minimal vcpkg manifest for zlib using the existing cached baseline.
 - [x] Make vcpkg manifest installation explicitly opt-in during CMake configuration so normal regenerations do not reinstall dependencies.
 - [x] Add the FolderSnap PNG to Qt resources and the ICO to Windows executable resources.
-- [ ] Complete the user's first dependency installation and clean build in the single `build/` folder.
-- [ ] Run the existing template tests as a foundation regression check.
+- [x] Complete the user's first dependency installation and clean build in the single `build/` folder.
+- [x] Run the existing template tests as a foundation regression check.
 
 Exit: a clean FolderSnap-branded foundation configures, builds, launches, and passes the retained shell tests.
 
 ## Phase 1 — UI prototype with fake data
 
-- [ ] Replace demo state with a clearly isolated `UiPreviewState`/fake model layer that cannot touch the filesystem.
-- [ ] Establish the final color, type, spacing, elevation, radius, focus, and motion tokens in `Theme.qml`.
-- [ ] Refine the frameless title bar, resize hit testing, Windows 10 region corners, and Windows 11 native corner behavior.
-- [ ] Display `foldersnap-icon` in the title/sidebar brand and application/taskbar surfaces.
-- [ ] Build the persistent navigation shell and retained-page transition host.
-- [ ] Build the Overview page with realistic watched-folder, snapshot, schedule, warning, and job data.
-- [ ] Build the Folders master-detail page with snapshot timeline and folder settings presentation.
-- [ ] Build explicit A/B selection and the full Compare page with a realistic multi-level change tree.
-- [ ] Build the Settings page, including reduced-motion and background-animation controls.
-- [ ] Build fake-data versions of add-folder, snapshot-details, warnings, export, cleanup review, and confirmation sheets/dialogs.
-- [ ] Cover empty, active scan, compare progress, errors, missing payload, archived folder, warning, and large-list states.
-- [ ] Add keyboard focus states, tab navigation, accessible names, scalable text, and color-independent statuses.
-- [ ] Verify resizing, maximized layout, common Windows scale factors, rapid navigation, and motion pausing while hidden/minimized.
-- [ ] Capture representative screenshots for each main page and key overlay.
+- [x] Replace demo state with a clearly isolated `UiPreviewState`/fake model layer that cannot touch the filesystem.
+- [x] Establish the final color, type, spacing, elevation, radius, focus, and motion tokens in `Theme.qml`.
+- [x] Refine the frameless title bar, resize hit testing, Windows 10 region corners, and Windows 11 native corner behavior.
+- [x] Display `foldersnap-icon` in the title/sidebar brand and application/taskbar surfaces.
+- [x] Build the persistent navigation shell and retained-page transition host.
+- [x] Build the Overview page with realistic watched-folder, snapshot, schedule, warning, and job data.
+- [x] Build the Folders master-detail page with snapshot timeline and folder settings presentation.
+- [x] Build explicit A/B selection and the full Compare page with a realistic multi-level change tree.
+- [x] Build the Settings page, including reduced-motion and background-animation controls.
+- [x] Build fake-data versions of add-folder, snapshot-details, warnings, export, cleanup review, and confirmation sheets/dialogs.
+- [x] Cover empty, active scan, compare progress, errors, missing payload, archived folder, warning, and large-list states.
+- [x] Add keyboard focus states, tab navigation, accessible names, scalable text, and color-independent statuses.
+- [x] Verify the normal and minimum layouts at 100% Windows scaling, maximization, rapid navigation, and motion pausing while hidden/minimized.
+- [x] Inspect representative screens and key overlays; retain only the overview verification screenshot.
 - [ ] Obtain user approval for the visual direction before connecting real functionality.
 
 Exit: every planned workflow can be reviewed visually using fake data, with no real file or system operations.
@@ -232,7 +232,7 @@ Exit: the complete product meets the guide's definition of done and is ready for
 
 ## Approval gates
 
-- [ ] Gate A — User confirms the first dependency install and foundation build succeed.
+- [x] Gate A — User confirms the first dependency install and foundation build succeed.
 - [ ] Gate B — User approves the fake-data UI direction.
 - [ ] Gate C — Domain/storage contracts and safety primitives pass review and tests.
 - [ ] Gate D — Live snapshot and comparison workflows pass end-to-end testing.

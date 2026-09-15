@@ -1,22 +1,30 @@
 import QtQuick
-import FolderSnap
 import QtQuick.Layouts
+import FolderSnap
 
 ColumnLayout {
-    property alias title: heading.text
-    property alias subtitle: description.text
-    spacing: Theme.compact
-    Text {
-        id: heading
-        Layout.fillWidth: true
-        color: Theme.text
-        font.family: Theme.fontFamily
-        font.pixelSize: Theme.titleSize
+    property string eyebrow: "YOUR WORKSPACE"
+    property string title: ""
+    property string subtitle: ""
+    spacing: 7
+    LabelText {
+        text: parent.eyebrow
+        color: Theme.accent
+        font.pixelSize: 9
+        font.letterSpacing: 1.8
         font.weight: Font.DemiBold
-        wrapMode: Text.WordWrap
     }
-    BodyText {
-        id: description
+    LabelText {
+        text: parent.title
+        font.pixelSize: 30
+        font.weight: Font.DemiBold
+        font.letterSpacing: -0.8
+        Layout.fillWidth: true
+    }
+    LabelText {
+        text: parent.subtitle
+        color: Theme.secondary
+        font.pixelSize: 12
         Layout.fillWidth: true
     }
 }

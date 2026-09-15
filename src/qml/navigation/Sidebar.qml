@@ -1,158 +1,256 @@
-pragma ComponentBehavior: Bound
 import QtQuick
-import FolderSnap
+import QtQuick.Controls
 import QtQuick.Layouts
+import FolderSnap
 
 Rectangle {
     id: sidebar
-    required property AppState appState
+    required property UiPreviewState appState
     required property MotionPolicy motion
     color: Theme.sidebar
-    Connections {
-        target: sidebar.motion
-        function onTransitionsEnabledChanged() {
-            if (!sidebar.motion.transitionsEnabled) {
-                selectionAnimation.complete();
-            }
-        }
+    Rectangle {
+        anchors.right: parent.right
+        width: 1
+        height: parent.height
+        color: "#293338"
     }
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 18
         spacing: 0
         RowLayout {
-            Layout.topMargin: 24
-            Layout.leftMargin: 10
-            spacing: 12
-            Rectangle {
+            Layout.topMargin: 12
+            Layout.bottomMargin: 34
+            spacing: 10
+            Image {
+                source: "qrc:/resources/icons/foldersnap-icon.png"
+                sourceSize: Qt.size(80, 80)
                 Layout.preferredWidth: 38
                 Layout.preferredHeight: 38
-                radius: 13
-                gradient: Gradient {
-                    GradientStop {
-                        position: 0
-                        color: "#c7b4ff"
-                    }
-                    GradientStop {
-                        position: 1
-                        color: "#7564c5"
-                    }
-                }
-                Image {
-                    anchors.centerIn: parent
-                    width: 23
-                    height: 23
-                    source: "qrc:/resources/icons/foldersnap-icon.png"
-                }
             }
-            Text {
-                text: "FolderSnap"
-                color: Theme.text
-                font.family: Theme.fontFamily
-                font.pixelSize: 28
-                font.weight: Font.DemiBold
-                font.letterSpacing: -1
+            ColumnLayout {
+                spacing: 1
+                LabelText {
+                    text: "FolderSnap"
+                    font.pixelSize: 20
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: -0.7
+                }
+                LabelText {
+                    text: "A little history. More clarity."
+                    font.pixelSize: 9
+                    color: Theme.muted
+                }
             }
         }
-        Text {
-            Layout.topMargin: 43
-            Layout.leftMargin: 14
-            Layout.bottomMargin: 14
-            text: "YOUR SPACE"
-            color: Theme.muted
-            font.family: Theme.fontFamily
+        LabelText {
+            text: "WORKSPACE"
             font.pixelSize: 9
-            font.letterSpacing: 1.5
+            font.letterSpacing: 1.6
+            color: Theme.muted
+            Layout.leftMargin: 12
+            Layout.bottomMargin: 12
         }
-        Item {
-            Layout.fillWidth: true
-            implicitHeight: 4 * 56
-            Rectangle {
-                width: parent.width
-                height: 48
-                radius: Theme.controlRadius
-                y: sidebar.appState.selectedSection * 56
-                color: "#302b48"
-                border.color: "#49415f"
-                Behavior on y {
-                    NumberAnimation {
-                        id: selectionAnimation
-                        duration: sidebar.motion.transitionsEnabled ? Theme.pageDuration : 0
-                        easing.type: Theme.easing
+        Repeater {
+            model: [
+                {
+                    label: "Overview",
+                    glyph: "overview"
+                },
+                {
+                    label: "Folders",
+                    glyph: "folder"
+                },
+                {
+                    label: "Compare",
+                    glyph: "compare"
+                },
+                {
+                    label: "Settings",
+                    glyph: "settings"
+                }
+            ]
+            Button {
+                id: nav
+                required property int index
+                required property var modelData
+                readonly property bool selected: sidebar.appState.selectedSection === index
+                Layout.fillWidth: true
+                Layout.preferredHeight: 44
+                Layout.bottomMargin: 5
+                hoverEnabled: true
+                focusPolicy: Qt.StrongFocus
+                Accessible.name: modelData.label
+                onClicked: sidebar.appState.selectedSection = index
+                background: Rectangle {
+                    radius: 8
+                    color: nav.selected ? "#293c36" : nav.hovered ? "#1e2a2c" : "transparent"
+                    border.color: nav.visualFocus ? Theme.accent : nav.selected ? "#3b564a" : "transparent"
+                    Rectangle {
+                        width: 3
+                        height: 16
+                        radius: 1.5
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: Theme.accent
+                        visible: nav.selected
+                    }
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: sidebar.motion.transitionsEnabled ? 120 : 0
+                        }
+                    }
+                }
+                contentItem: RowLayout {
+                    spacing: 12
+                    Glyph {
+                        Layout.leftMargin: 8
+                        name: nav.modelData.glyph
+                        color: nav.selected ? Theme.accent : Theme.muted
+                        font.pixelSize: 17
+                    }
+                    LabelText {
+                        text: nav.modelData.label
+                        color: nav.selected ? Theme.text : Theme.secondary
+                        font.weight: nav.selected ? Font.DemiBold : Font.Normal
+                        Layout.fillWidth: true
+                    }
+                    LabelText {
+                        visible: nav.index === 1
+                        text: sidebar.appState.visibleRoots.length
+                        font.pixelSize: 10
+                        color: Theme.muted
+                        Layout.rightMargin: 8
                     }
                 }
             }
-            Column {
-                anchors.fill: parent
-                spacing: 8
-                Repeater {
-                    model: ["Overview", "Collection", "Activity", "Settings"]
-                    NavigationButton {
-                        required property int index
-                        required property string modelData
-                        width: parent.width
-                        text: modelData
-                        glyph: modelData.toLowerCase()
-                        selected: sidebar.appState.selectedSection === index
-                        onClicked: sidebar.appState.selectedSection = index
-                    }
-                }
-            }
-        }
-        Item {
-            Layout.fillHeight: true
         }
         Rectangle {
             Layout.fillWidth: true
-            implicitHeight: 98
-            visible: sidebar.height >= 540
-            radius: Theme.controlRadius
-            color: "#1e2231"
-            border.color: "#2c3143"
-            Column {
+            height: 1
+            color: "#293338"
+            Layout.topMargin: 19
+            Layout.bottomMargin: 23
+        }
+        LabelText {
+            text: "YOUR FOLDERS"
+            font.pixelSize: 9
+            font.letterSpacing: 1.6
+            color: Theme.muted
+            Layout.leftMargin: 12
+            Layout.bottomMargin: 12
+        }
+        Repeater {
+            model: sidebar.appState.visibleRoots.slice(0, 4)
+            Button {
+                id: rootButton
+                required property int index
+                required property var modelData
+                Layout.fillWidth: true
+                Layout.preferredHeight: 34
+                hoverEnabled: true
+                Accessible.name: "Open " + modelData.name
+                onClicked: {
+                    sidebar.appState.chooseRoot(index);
+                    sidebar.appState.selectedSection = AppState.Folders;
+                }
+                background: Rectangle {
+                    radius: 6
+                    color: rootButton.hovered ? "#202c2e" : "transparent"
+                    border.color: rootButton.visualFocus ? Theme.accent : "transparent"
+                }
+                contentItem: RowLayout {
+                    spacing: 10
+                    Rectangle {
+                        Layout.leftMargin: 13
+                        width: 5
+                        height: 5
+                        radius: 3
+                        color: rootButton.modelData.color
+                    }
+                    LabelText {
+                        text: rootButton.modelData.name
+                        color: Theme.secondary
+                        font.pixelSize: 11
+                        Layout.fillWidth: true
+                    }
+                    Glyph {
+                        visible: rootButton.modelData.archived
+                        name: "archive"
+                        font.pixelSize: 11
+                        Layout.rightMargin: 8
+                    }
+                }
+            }
+        }
+        ActionButton {
+            animationsEnabled: sidebar.motion.transitionsEnabled
+            Layout.fillWidth: true
+            Layout.topMargin: 6
+            primary: false
+            quiet: true
+            glyph: "plus"
+            text: "Add folder"
+            onClicked: sidebar.appState.openSheet("add")
+        }
+        Item {
+            Layout.fillHeight: true
+            Layout.minimumHeight: 18
+        }
+        Panel {
+            Layout.fillWidth: true
+            implicitHeight: 87
+            color: "#1b2928"
+            border.color: "#2d413b"
+            visible: sidebar.height > 640
+            ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 15
-                spacing: 8
-                Text {
-                    text: "Made for the moment"
-                    color: Theme.text
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
+                anchors.margins: 13
+                spacing: 6
+                RowLayout {
+                    Glyph {
+                        name: "shield"
+                        color: Theme.accent
+                        font.pixelSize: 13
+                    }
+                    LabelText {
+                        text: "Only on your device"
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                    }
                 }
                 BodyText {
-                    width: parent.width
-                    text: "A small exploration of color, motion & interaction."
-                    font.pixelSize: 11
+                    Layout.fillWidth: true
+                    text: "Your folders. Your history.\nNo cloud, no accounts."
+                    font.pixelSize: 10
+                    color: Theme.muted
                 }
             }
         }
         RowLayout {
-            Layout.topMargin: 22
-            Layout.bottomMargin: 6
+            Layout.fillWidth: true
+            Layout.topMargin: 20
             Layout.leftMargin: 10
-            Layout.rightMargin: 8
+            Layout.bottomMargin: 5
             Rectangle {
-                Layout.preferredWidth: 6
-                Layout.preferredHeight: 6
+                width: 5
+                height: 5
                 radius: 3
-                color: Theme.success
+                color: Theme.accent
             }
-            Text {
-                text: "INTERFACE DEMO"
+            LabelText {
+                text: "UI PREVIEW"
                 color: Theme.muted
-                font.family: Theme.fontFamily
                 font.pixelSize: 9
                 font.letterSpacing: 1
             }
             Item {
                 Layout.fillWidth: true
             }
-            Text {
-                text: "01"
-                color: Theme.muted
-                font.family: Theme.fontFamily
+            LabelText {
+                text: "0.1"
                 font.pixelSize: 10
+                color: Theme.muted
             }
         }
     }

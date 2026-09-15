@@ -5,15 +5,20 @@ Item {
     id: bar
     required property Window appWindow
     implicitHeight: Theme.titleHeight
-    Text {
+    LabelText {
         anchors.left: parent.left
-        anchors.leftMargin: 26
+        anchors.leftMargin: 22
         anchors.verticalCenter: parent.verticalCenter
-        text: "AURA  /  A LITTLE SPACE TO EXPLORE"
+        text: "FOLDERSNAP"
         color: Theme.muted
-        font.family: Theme.fontFamily
         font.pixelSize: 9
-        font.letterSpacing: 1.8
+        font.letterSpacing: 2
+    }
+    LabelText {
+        anchors.centerIn: parent
+        text: "A quieter way to keep track."
+        color: "#74868b"
+        font.pixelSize: 10
     }
     Row {
         anchors.right: parent.right
@@ -26,11 +31,10 @@ Item {
             text: bar.appWindow.visibility === Window.Maximized ? "Restore" : "Maximize"
             glyph: bar.appWindow.visibility === Window.Maximized ? "restore" : "maximize"
             onClicked: {
-                if (bar.appWindow.visibility === Window.Maximized) {
+                if (bar.appWindow.visibility === Window.Maximized)
                     bar.appWindow.showNormal();
-                } else {
+                else
                     bar.appWindow.showMaximized();
-                }
             }
         }
         WindowButton {

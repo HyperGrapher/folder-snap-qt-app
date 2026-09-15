@@ -3,11 +3,11 @@ import FolderSnap
 
 Item {
     id: host
-    required property AppState appState
+    required property UiPreviewState appState
     required property MotionPolicy motion
     readonly property int currentIndex: appState.selectedSection
     property bool isTransitioning: false
-    readonly property var pages: [overview, collection, activity, settings]
+    readonly property var pages: [overview, folders, compare, settings]
     property int previousIndex: 0
     property bool initialized: false
     clip: true
@@ -82,22 +82,22 @@ Item {
         }
     }
     PageFrame {
-        id: collection
+        id: folders
         width: host.width
         height: host.height
         onFinished: host.finishIfReady()
-        CollectionPage {
+        FoldersPage {
             anchors.fill: parent
             appState: host.appState
             motion: host.motion
         }
     }
     PageFrame {
-        id: activity
+        id: compare
         width: host.width
         height: host.height
         onFinished: host.finishIfReady()
-        ActivityPage {
+        ComparePage {
             anchors.fill: parent
             appState: host.appState
             motion: host.motion
