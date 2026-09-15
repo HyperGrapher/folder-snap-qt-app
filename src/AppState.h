@@ -5,6 +5,7 @@
 #include <QFutureWatcher>
 #include <QObject>
 #include <QStringList>
+#include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
@@ -313,7 +314,7 @@ class AppState : public QObject
     Q_INVOKABLE void startComparison();
     Q_INVOKABLE void openSheet(const QString &kind);
     Q_INVOKABLE void openCurrentFolder();
-    Q_INVOKABLE void addFolder(const QString &name, const QString &path);
+    Q_INVOKABLE void addFolder(const QUrl &folderUrl);
     Q_INVOKABLE void updateRoot(const QString &name, const QString &schedule, bool archived);
     Q_INVOKABLE void toggleCleanup(const QString &path);
     Q_INVOKABLE void saveDescription(const QString &description);

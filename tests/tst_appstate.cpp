@@ -48,7 +48,7 @@ class AppStateTest final : public QObject
 
         {
             AppState state;
-            state.addFolder("Watched", watchedDirectory.path());
+            state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
             QCOMPARE(state.roots().size(), 1);
 
             state.takeSnapshot();

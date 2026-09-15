@@ -6,6 +6,7 @@
 
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QDir>
 #include <QFileInfo>
 #include <QHash>
 #include <QLocale>
@@ -889,11 +890,11 @@ void AppState::openCurrentFolder()
     }
 }
 
-void AppState::addFolder(const QString &name, const QString &path)
+void AppState::addFolder(const QUrl &folderUrl)
 {
     try
     {
-        const QString displayName = name.trimmed();
+        const QString path = folderUrl.toLocalFile();
         const foldersnap::RootPath normalized = foldersnap::normalizeRootPath(path.trimmed());
         const QFileInfo info(normalized.displayPath);
         if (!info.exists() || !info.isDir())
@@ -904,10 +905,14 @@ void AppState::addFolder(const QString &name, const QString &path)
         const auto dataDirectory = foldersnap::normalizeRootPath(m_paths.dataDirectory);
         const auto protectedSubtree = foldersnap::protectedDataSubtree(normalized, dataDirectory);
         Q_UNUSED(protectedSubtree);
+        QString displayName = info.fileName();
         if (displayName.isEmpty())
         {
-            throw foldersnap::DomainError(foldersnap::ErrorCode::InvalidData,
-                                          "A folder name is required.");
+            displayName = QDir(normalized.displayPath).dirName();
+        }
+        if (displayName.isEmpty())
+        {
+            displayName = normalized.displayPath;
         }
         for (const auto &root : m_configuration.roots)
         {

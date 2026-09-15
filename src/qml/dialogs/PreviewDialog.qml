@@ -16,18 +16,20 @@ Dialog {
     width: Math.min(570, parent ? parent.width - 48 : 570)
     padding: 24
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    visible: kind !== ""
+    visible: kind !== "" && kind !== "add"
     onClosed: appState.sheet = ""
+    onKindChanged: {
+        if (kind === "add")
+            folderChooser.open();
+    }
     FolderDialog {
         id: folderChooser
         title: "Choose a folder to watch"
         onAccepted: {
-            let value = selectedFolder.toString().replace("file:///", "");
-            value = decodeURIComponent(value);
-            if (/^\/[A-Za-z]:/.test(value))
-                value = value.substring(1);
-            pathInput.text = value;
+            dialog.appState.sheet = "";
+            dialog.appState.addFolder(selectedFolder);
         }
+        onRejected: dialog.appState.sheet = ""
     }
     background: Panel {
         color: "#1c272c"
@@ -70,7 +72,6 @@ Dialog {
             LabelText {
                 Layout.fillWidth: true
                 text: ({
-                        add: "Give a folder some history.",
                         folder: "Folder preferences",
                         detail: "A moment, in detail.",
                         warnings: "A few things to know.",
@@ -102,11 +103,11 @@ Dialog {
         spacing: 16
         BodyText {
             Layout.fillWidth: true
-            text: dialog.kind === "add" ? "Start with one folder. FolderSnap remembers its file details so you can see what changes over time." : dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Offline report export is planned for a later milestone." : dialog.kind === "cleanup" ? "Added entries can be reviewed here. Moving live files is disabled until the safety workflow is implemented." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
+            text: dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Offline report export is planned for a later milestone." : dialog.kind === "cleanup" ? "Added entries can be reviewed here. Moving live files is disabled until the safety workflow is implemented." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
             font.pixelSize: 12
         }
         ColumnLayout {
-            visible: dialog.kind === "add" || dialog.kind === "folder"
+            visible: dialog.kind === "folder"
             Layout.fillWidth: true
             spacing: 10
             LabelText {
@@ -123,7 +124,7 @@ Dialog {
                 text: dialog.kind === "folder" ? dialog.appState.currentRoot.name : ""
             }
             LabelText {
-                text: dialog.kind === "add" ? "FOLDER PATH" : "REGISTERED FOLDER"
+                text: "REGISTERED FOLDER"
                 font.pixelSize: 9
                 font.letterSpacing: 1
                 color: Theme.muted
@@ -131,20 +132,10 @@ Dialog {
             RowLayout {
                 Layout.fillWidth: true
                 SearchField {
-                    id: pathInput
                     Layout.fillWidth: true
                     leftPadding: 12
-                    readOnly: dialog.kind === "folder"
-                    text: dialog.kind === "folder" ? dialog.appState.currentRoot.path : ""
-                    placeholderText: "C:/Users/Burak/My folder"
-                }
-                ActionButton {
-                    visible: dialog.kind === "add"
-                    animationsEnabled: dialog.motion.transitionsEnabled
-                    text: "Browse"
-                    primary: false
-                    glyph: "folder"
-                    onClicked: folderChooser.open()
+                    readOnly: true
+                    text: dialog.appState.currentRoot.path
                 }
             }
             RowLayout {
@@ -479,17 +470,14 @@ Dialog {
             }
             ActionButton {
                 animationsEnabled: dialog.motion.transitionsEnabled
-                text: dialog.kind === "add" ? "Add folder" : dialog.kind === "folder" ? "Save preferences" : dialog.kind === "cleanup" ? "Cleanup unavailable" : dialog.isDestructive ? (dialog.kind === "clear" ? "Clear history" : "Delete snapshot") : "Done"
-                glyph: dialog.kind === "add" ? "plus" : ""
-                enabled: dialog.kind === "add" ? nameInput.text.trim() !== "" && pathInput.text.trim() !== "" : dialog.kind !== "cleanup"
+                text: dialog.kind === "folder" ? "Save preferences" : dialog.kind === "cleanup" ? "Cleanup unavailable" : dialog.isDestructive ? (dialog.kind === "clear" ? "Clear history" : "Delete snapshot") : "Done"
+                enabled: dialog.kind !== "cleanup"
                 primary: !dialog.isDestructive
                 danger: dialog.isDestructive
                 onClicked: {
                     if (dialog.kind === "cleanup") {
                         return;
                     }
-                    if (dialog.kind === "add")
-                        dialog.appState.addFolder(nameInput.text.trim(), pathInput.text.trim());
                     if (dialog.kind === "folder") {
                         dialog.appState.updateRoot(nameInput.text, scheduleInput.currentText, archiveInput.checked);
                         dialog.appState.ignoreRules = ignoreInput.text;
