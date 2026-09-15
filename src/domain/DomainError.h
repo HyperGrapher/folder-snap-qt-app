@@ -13,7 +13,8 @@ enum class ErrorCode
     InvalidRule,
     InvalidData,
     UnsupportedSchema,
-    SizeLimit
+    SizeLimit,
+    Io
 };
 
 // Core entry points throw this value; application job boundaries translate it to UI errors.

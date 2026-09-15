@@ -101,20 +101,20 @@ Exit: every planned workflow can be reviewed visually using fake data, with no r
 - [x] Implement normalized watched-root and relative identity paths with Windows case-insensitive semantics.
 - [x] Implement storage-ID validation, lexical containment-checked joins, long-path normalization, and data-directory self-protection. Native long-path access and reparse checks belong to scanner/cleanup integration.
 - [x] Implement the ordered ignore matcher, negation handling, validation diagnostics, and test-path result.
-- [ ] Implement atomic same-directory replacement and corrupt-file backup helpers.
+- [x] Implement atomic same-directory replacement and corrupt-file backup helpers.
 - [x] Add unit tests for schema validation, precision/boundary cases, path attacks, containment, and ignore behavior.
 
 First backend milestone: the Qt-Core-only `folder_snap_core` library and three new
 test suites are implemented. See [core contracts](260915-Core_Data_Contracts.md).
-The UI remains on sample data. Atomic storage is the next step; phase 2 and Gate C
-remain open until the remaining durability work is implemented and tested.
+The UI remains on sample data. Phase 2 and Gate C remain open until the remaining
+durability work is implemented and tested.
 
 Exit: persistence values round-trip without semantic loss, and unsafe paths/identifiers are rejected before any filesystem mutation.
 
 ## Phase 3 — Configuration and history storage
 
-- [ ] Implement `%LOCALAPPDATA%\FolderSnap` paths plus a mandatory development/test override.
-- [ ] Implement config defaults, load/save, size limits, schema checks, and malformed-config preservation.
+- [x] Implement `%LOCALAPPDATA%\FolderSnap` paths plus a mandatory development/test override.
+- [x] Implement config defaults, load/save, size limits, schema checks, and malformed-config preservation.
 - [ ] Implement gzip snapshot encoding/decoding with zlib and the 1 GiB decoded-size guard.
 - [ ] Implement the global lightweight history index and payload-availability detection.
 - [ ] Serialize history mutations and prove concurrent saves cannot lose records.
@@ -125,6 +125,11 @@ Exit: persistence values round-trip without semantic loss, and unsafe paths/iden
 - [ ] Add interruption, corruption, concurrency, retention-isolation, and recovery tests.
 
 Exit: history remains consistent across failures and restart-repair scenarios.
+
+Storage milestone: configuration and the history index now use `QSaveFile` atomic
+replacement, preserve malformed documents under `corrupt/`, and have an explicit
+absolute-directory constructor for development and tests. Compressed payloads,
+history mutation serialization, retention, deletion, and recovery remain open.
 
 ## Phase 4 — Metadata scanner
 

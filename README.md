@@ -13,13 +13,15 @@ encoding/decoding, exact 64-bit metadata and nanosecond UTC timestamps, validate
 paths/IDs, and exclusion matching with protected application-data subtrees.
 See [core contracts](docs/260915-Core_Data_Contracts.md) for behavior and limits.
 
-This milestone does not scan folders, save configuration/history, or connect live
-data to the interface. Atomic storage and the scanner are the next steps.
+Configuration and the lightweight history index now save atomically in the user's
+local application-data folder. Invalid saved JSON is preserved in a `corrupt/`
+subfolder before FolderSnap returns safe defaults. This milestone does not yet scan
+folders, store snapshot payloads, or connect live data to the interface.
 
 Run only the new core tests after building:
 
 ```powershell
-ctest --test-dir build --output-on-failure -R '^(domain|paths|ignore)$'
+ctest --test-dir build --output-on-failure -R '^(domain|paths|ignore|storage)$'
 ```
 
 ## Build and run

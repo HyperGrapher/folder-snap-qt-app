@@ -55,14 +55,18 @@ including an error code and a one-based rule line when applicable.
 
 ## Verification and remaining work
 
-`tst_domain`, `tst_paths` and `tst_ignore` cover canonical fixtures, all schedule kinds,
+`tst_domain`, `tst_paths`, `tst_ignore` and `tst_storage` cover canonical fixtures, all schedule kinds,
 Unicode, precision beyond JavaScript's safe integer range, timestamp boundaries,
 malformed values, duplicate identities, path attacks, exclusion order and protection.
 
-Verified on 2026-09-15 with Qt 6.11.1/MinGW 13.1: the application builds and all six
-CTest suites pass (paths, ignore, domain, appstate, ui, window). The existing native
+Verified on 2026-09-15 with Qt 6.11.1/MinGW 13.1: the application builds and all seven
+CTest suites pass (paths, ignore, domain, storage, appstate, ui, window). The existing native
 window test runs at the normal desktop scale; no additional screenshot suite was added.
 
-Atomic file replacement/corrupt backups remain unchecked in phase 2. Configuration
-storage, compressed history, scanning and live UI models are not implemented by this
-milestone. No existing user configuration or watched-folder contents are modified.
+Configuration and history-index storage now uses Qt's same-directory `QSaveFile`
+replacement. Missing documents return defaults; malformed or schema-incompatible
+documents are moved to `corrupt/` before defaults are returned. Filesystem failures
+are reported instead of being misclassified as corrupt. `StoragePaths::fromDataDirectory`
+requires an absolute path for development and test isolation; `forCurrentUser()` uses
+Qt's per-user local application-data location. Compressed snapshots, scanning and live
+UI models are not implemented by this milestone. No watched-folder contents are modified.
