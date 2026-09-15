@@ -5,6 +5,7 @@
 #include <utility>
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 
 #include <zlib.h>
@@ -135,6 +136,11 @@ QString SnapshotStore::payloadPath(const QString &snapshotId) const
     return snapshotPayloadPath(m_paths, snapshotId);
 }
 
+QString SnapshotStore::tombstonePath(const QString &snapshotId) const
+{
+    return payloadPath(snapshotId) + ".deleting";
+}
+
 bool SnapshotStore::hasPayload(const QString &snapshotId) const
 {
     return QFileInfo::exists(payloadPath(snapshotId));
@@ -164,5 +170,46 @@ Snapshot SnapshotStore::loadSnapshot(const QString &snapshotId) const
                           "Snapshot payload ID does not match its filename.");
     }
     return snapshot;
+}
+
+bool SnapshotStore::movePayloadToTombstone(const QString &snapshotId) const
+{
+    const QString payload = payloadPath(snapshotId);
+    if (!QFileInfo::exists(payload))
+    {
+        return false;
+    }
+    const QString tombstone = tombstonePath(snapshotId);
+    if (QFileInfo::exists(tombstone) || !QFile::rename(payload, tombstone))
+    {
+        throw DomainError(ErrorCode::Io,
+                          QString("Could not tombstone snapshot payload: %1").arg(snapshotId));
+    }
+    return true;
+}
+
+void SnapshotStore::restoreTombstone(const QString &snapshotId) const
+{
+    const QString tombstone = tombstonePath(snapshotId);
+    if (!QFileInfo::exists(tombstone))
+    {
+        return;
+    }
+    const QString payload = payloadPath(snapshotId);
+    if (QFileInfo::exists(payload) || !QFile::rename(tombstone, payload))
+    {
+        throw DomainError(ErrorCode::Io,
+                          QString("Could not restore snapshot payload: %1").arg(snapshotId));
+    }
+}
+
+void SnapshotStore::removeTombstone(const QString &snapshotId) const
+{
+    const QString tombstone = tombstonePath(snapshotId);
+    if (QFileInfo::exists(tombstone) && !QFile::remove(tombstone))
+    {
+        throw DomainError(ErrorCode::Io,
+                          QString("Could not remove snapshot tombstone: %1").arg(snapshotId));
+    }
 }
 } // namespace foldersnap

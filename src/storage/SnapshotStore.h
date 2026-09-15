@@ -19,9 +19,13 @@ class SnapshotStore final
 
     [[nodiscard]] const StoragePaths &paths() const;
     [[nodiscard]] QString payloadPath(const QString &snapshotId) const;
+    [[nodiscard]] QString tombstonePath(const QString &snapshotId) const;
     [[nodiscard]] bool hasPayload(const QString &snapshotId) const;
     [[nodiscard]] qint64 saveSnapshot(const Snapshot &snapshot) const;
     [[nodiscard]] Snapshot loadSnapshot(const QString &snapshotId) const;
+    [[nodiscard]] bool movePayloadToTombstone(const QString &snapshotId) const;
+    void restoreTombstone(const QString &snapshotId) const;
+    void removeTombstone(const QString &snapshotId) const;
 
   private:
     StoragePaths m_paths;

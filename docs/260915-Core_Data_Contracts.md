@@ -23,6 +23,10 @@ including an error code and a one-based rule line when applicable.
   Decoding accepts unsorted unique entries and records a runtime `entriesSorted` hint.
 - Index encoding sorts newest-first, breaking ties by snapshot ID ascending.
   `payloadAvailable` is runtime-only and defaults to false until storage checks it.
+- History commits are protected by a local lock file, reject duplicate IDs, write the
+  immutable gzip payload before the index, and retain only the newest configured
+  records per root. Retention uses temporary `.deleting` tombstones so an index-save
+  failure can restore the old payloads. Description edits only rewrite the index.
 - Empty descriptions may be omitted. Missing `createdNs` means zero. Missing
   `lastScanError` means empty; absent optional timestamps mean no recorded time.
   Descriptions allow at most 500 Unicode code points, including emoji.

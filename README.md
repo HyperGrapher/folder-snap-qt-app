@@ -15,8 +15,10 @@ See [core contracts](docs/260915-Core_Data_Contracts.md) for behavior and limits
 
 Configuration and the lightweight history index now save atomically in the user's
 local application-data folder. Invalid saved JSON is preserved in a `corrupt/`
-subfolder before FolderSnap returns safe defaults. This milestone does not yet scan
-folders, store snapshot payloads, or connect live data to the interface.
+subfolder before FolderSnap returns safe defaults. Snapshot payloads are gzip
+compressed; history commits are serialized, descriptions update only the index, and
+retention is isolated per watched root. This milestone does not yet scan folders or
+connect live data to the interface.
 
 Run only the new core tests after building:
 

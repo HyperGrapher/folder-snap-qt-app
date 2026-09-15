@@ -1,3 +1,9 @@
+#include <atomic>
+#include <latch>
+#include <mutex>
+#include <thread>
+#include <vector>
+
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -6,6 +12,7 @@
 #include "domain/JsonCodec.h"
 #include "storage/AtomicFile.h"
 #include "storage/ConfigurationStore.h"
+#include "storage/HistoryStore.h"
 #include "storage/SnapshotStore.h"
 
 namespace
@@ -27,6 +34,34 @@ foldersnap::HistoryRecord historyRecord()
         0,
         1234,
     };
+}
+
+foldersnap::Snapshot fixtureSnapshot()
+{
+    QFile fixtureFile(QString(FOLDERSNAP_FIXTURE_DIR) + "/snapshot-v2.json");
+    if (!fixtureFile.open(QIODevice::ReadOnly))
+    {
+        qFatal("Could not open the snapshot fixture.");
+    }
+    return foldersnap::decodeSnapshot(fixtureFile.readAll());
+}
+
+QString snapshotId(int sequence)
+{
+    return QString("00000000-0000-4000-8000-%1").arg(sequence, 12, 10, QChar('0'));
+}
+
+foldersnap::Snapshot snapshotAt(int sequence, const QString &rootId = {})
+{
+    auto snapshot = fixtureSnapshot();
+    snapshot.header.snapshotId = snapshotId(sequence);
+    if (!rootId.isEmpty())
+    {
+        snapshot.header.rootId = rootId;
+    }
+    snapshot.header.startedAtUtc.nanoseconds += sequence;
+    snapshot.header.completedAtUtc.nanoseconds += sequence;
+    return snapshot;
 }
 } // namespace
 
@@ -196,6 +231,98 @@ class StorageTest final : public QObject
         QVERIFY(snapshotStore.saveSnapshot(source) > 0);
         const auto loaded = configurationStore.loadHistoryIndex();
         QVERIFY(loaded.value.first().payloadAvailable);
+    }
+
+    void descriptionEditsDoNotMutateSnapshotPayload()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        const foldersnap::Snapshot source = fixtureSnapshot();
+        const foldersnap::HistoryStore historyStore(paths);
+        QCOMPARE(historyStore.commitSnapshot(source, 0).record.snapshotId,
+                 source.header.snapshotId);
+        const QString payloadPath =
+            foldersnap::SnapshotStore(paths).payloadPath(source.header.snapshotId);
+        const QByteArray payloadBefore = foldersnap::readFileLimited(payloadPath, 1024 * 1024);
+
+        historyStore.updateDescription(source.header.snapshotId, "A later note ✨");
+
+        const auto records = historyStore.loadHistory();
+        QCOMPARE(records.size(), 1);
+        QCOMPARE(records.first().description, QString("A later note ✨"));
+        QCOMPARE(foldersnap::readFileLimited(payloadPath, 1024 * 1024), payloadBefore);
+        QCOMPARE(foldersnap::SnapshotStore(paths)
+                     .loadSnapshot(source.header.snapshotId)
+                     .header.description,
+                 source.header.description);
+    }
+
+    void retentionPrunesOnlyTheSavedRootsOldestPayload()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        const foldersnap::HistoryStore historyStore(paths);
+        for (int sequence = 1; sequence <= 11; ++sequence)
+        {
+            QCOMPARE(historyStore.commitSnapshot(snapshotAt(sequence), 10).record.snapshotId,
+                     snapshotId(sequence));
+        }
+        const QString otherRootId = "33333333-3333-4333-8333-333333333333";
+        const auto other = snapshotAt(100, otherRootId);
+        QCOMPARE(historyStore.commitSnapshot(other, 10).record.snapshotId, other.header.snapshotId);
+
+        const auto primary = historyStore.loadHistoryForRoot(fixtureSnapshot().header.rootId);
+        QCOMPARE(primary.size(), 10);
+        QVERIFY(!foldersnap::SnapshotStore(paths).hasPayload(snapshotId(1)));
+        QVERIFY(!QFile::exists(foldersnap::SnapshotStore(paths).tombstonePath(snapshotId(1))));
+        QCOMPARE(historyStore.loadHistoryForRoot(otherRootId).size(), 1);
+        QVERIFY(foldersnap::SnapshotStore(paths).hasPayload(other.header.snapshotId));
+    }
+
+    void concurrentSnapshotCommitsDoNotLoseHistory()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        constexpr int writerCount = 16;
+        std::latch startGate(1);
+        std::mutex errorMutex;
+        QStringList errors;
+        std::vector<std::thread> writers;
+        writers.reserve(writerCount);
+        for (int sequence = 1; sequence <= writerCount; ++sequence)
+        {
+            writers.emplace_back(
+                [&, sequence]()
+                {
+                    startGate.wait();
+                    try
+                    {
+                        (void)foldersnap::HistoryStore(paths).commitSnapshot(snapshotAt(sequence),
+                                                                             0);
+                    }
+                    catch (const std::exception &error)
+                    {
+                        const std::scoped_lock lock(errorMutex);
+                        errors.append(QString::fromUtf8(error.what()));
+                    }
+                });
+        }
+        startGate.count_down();
+        for (std::thread &writer : writers)
+        {
+            writer.join();
+        }
+
+        QVERIFY2(errors.isEmpty(), qPrintable(errors.join('\n')));
+        const auto records = foldersnap::HistoryStore(paths).loadHistory();
+        QCOMPARE(records.size(), writerCount);
+        for (int sequence = 1; sequence <= writerCount; ++sequence)
+        {
+            QVERIFY(foldersnap::SnapshotStore(paths).hasPayload(snapshotId(sequence)));
+        }
     }
 };
 

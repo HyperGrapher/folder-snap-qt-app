@@ -40,6 +40,7 @@ add_library(folder_snap_core STATIC
     src/storage/ConfigurationStore.h src/storage/ConfigurationStore.cpp
     src/storage/StoragePaths.h src/storage/StoragePaths.cpp
     src/storage/SnapshotStore.h src/storage/SnapshotStore.cpp
+    src/storage/HistoryStore.h src/storage/HistoryStore.cpp
 )
 target_include_directories(folder_snap_core PUBLIC src)
 target_link_libraries(folder_snap_core PUBLIC Qt6::Core ZLIB::ZLIB)

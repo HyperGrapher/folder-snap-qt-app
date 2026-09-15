@@ -117,9 +117,9 @@ Exit: persistence values round-trip without semantic loss, and unsafe paths/iden
 - [x] Implement config defaults, load/save, size limits, schema checks, and malformed-config preservation.
 - [x] Implement gzip snapshot encoding/decoding with zlib and the 1 GiB decoded-size guard.
 - [x] Implement the global lightweight history index and payload-availability detection.
-- [ ] Serialize history mutations and prove concurrent saves cannot lose records.
-- [ ] Implement description edits without mutating immutable snapshot payloads.
-- [ ] Implement per-root retention after successful saves.
+- [x] Serialize history mutations and prove concurrent saves cannot lose records.
+- [x] Implement description edits without mutating immutable snapshot payloads.
+- [x] Implement per-root retention after successful saves.
 - [ ] Implement transactional snapshot deletion, root-history clearing, and tombstone rollback.
 - [ ] Implement startup repair for tombstones, orphan payloads, corrupt index reconstruction, and missing payload records.
 - [ ] Add interruption, corruption, concurrency, retention-isolation, and recovery tests.
@@ -128,8 +128,10 @@ Exit: history remains consistent across failures and restart-repair scenarios.
 
 Storage milestone: configuration and the history index now use `QSaveFile` atomic
 replacement, preserve malformed documents under `corrupt/`, and have an explicit
-absolute-directory constructor for development and tests. Compressed payloads,
-history mutation serialization, retention, deletion, and recovery remain open.
+absolute-directory constructor for development and tests. History commits use a
+cross-instance lock, write payloads before the index, preserve immutable payload
+descriptions, and apply per-root retention with rollback tombstones. Deletion and
+startup recovery remain open.
 
 ## Phase 4 — Metadata scanner
 
