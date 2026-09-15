@@ -27,6 +27,8 @@ including an error code and a one-based rule line when applicable.
   immutable gzip payload before the index, and retain only the newest configured
   records per root. Retention uses temporary `.deleting` tombstones so an index-save
   failure can restore the old payloads. Description edits only rewrite the index.
+  Explicit deletion and root-history clearing use the same transaction pattern;
+  startup repair restores referenced tombstones and reconstructs valid orphan payloads.
 - Empty descriptions may be omitted. Missing `createdNs` means zero. Missing
   `lastScanError` means empty; absent optional timestamps mean no recorded time.
   Descriptions allow at most 500 Unicode code points, including emoji.

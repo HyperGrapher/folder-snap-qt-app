@@ -120,9 +120,9 @@ Exit: persistence values round-trip without semantic loss, and unsafe paths/iden
 - [x] Serialize history mutations and prove concurrent saves cannot lose records.
 - [x] Implement description edits without mutating immutable snapshot payloads.
 - [x] Implement per-root retention after successful saves.
-- [ ] Implement transactional snapshot deletion, root-history clearing, and tombstone rollback.
-- [ ] Implement startup repair for tombstones, orphan payloads, corrupt index reconstruction, and missing payload records.
-- [ ] Add interruption, corruption, concurrency, retention-isolation, and recovery tests.
+- [x] Implement transactional snapshot deletion, root-history clearing, and tombstone rollback.
+- [x] Implement startup repair for tombstones, orphan payloads, corrupt index reconstruction, and missing payload records.
+- [x] Add interruption, corruption, concurrency, retention-isolation, and recovery tests.
 
 Exit: history remains consistent across failures and restart-repair scenarios.
 
@@ -130,8 +130,9 @@ Storage milestone: configuration and the history index now use `QSaveFile` atomi
 replacement, preserve malformed documents under `corrupt/`, and have an explicit
 absolute-directory constructor for development and tests. History commits use a
 cross-instance lock, write payloads before the index, preserve immutable payload
-descriptions, and apply per-root retention with rollback tombstones. Deletion and
-startup recovery remain open.
+descriptions, and apply per-root retention with rollback tombstones. Deletion,
+root-history clearing, and startup repair now recover tombstones and valid orphan
+payloads; broader interruption simulation remains part of later integration work.
 
 ## Phase 4 — Metadata scanner
 

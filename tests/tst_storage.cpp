@@ -10,6 +10,7 @@
 
 #include "domain/DomainError.h"
 #include "domain/JsonCodec.h"
+#include "paths/WindowsPaths.h"
 #include "storage/AtomicFile.h"
 #include "storage/ConfigurationStore.h"
 #include "storage/HistoryStore.h"
@@ -323,6 +324,97 @@ class StorageTest final : public QObject
         {
             QVERIFY(foldersnap::SnapshotStore(paths).hasPayload(snapshotId(sequence)));
         }
+    }
+
+    void deleteSnapshotRemovesIndexAndPayload()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        const auto source = fixtureSnapshot();
+        const foldersnap::HistoryStore historyStore(paths);
+        (void)historyStore.commitSnapshot(source, 0);
+        historyStore.deleteSnapshot(source.header.snapshotId);
+
+        QVERIFY(historyStore.loadHistory().isEmpty());
+        QVERIFY(!foldersnap::SnapshotStore(paths).hasPayload(source.header.snapshotId));
+        try
+        {
+            historyStore.deleteSnapshot(source.header.snapshotId);
+            QFAIL("Deleting a missing history record was accepted.");
+        }
+        catch (const foldersnap::DomainError &error)
+        {
+            QCOMPARE(error.code(), foldersnap::ErrorCode::InvalidData);
+        }
+    }
+
+    void clearRootHistoryResetsRootStatusAndPreservesOtherRoots()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        const auto source = fixtureSnapshot();
+        const QString otherRootId = "33333333-3333-4333-8333-333333333333";
+        foldersnap::Configuration configuration;
+        foldersnap::WatchedRoot root;
+        root.rootId = source.header.rootId;
+        root.displayName = source.header.displayTitle;
+        root.path = source.header.rootPathAtCapture;
+        root.normalizedPath = foldersnap::normalizeRootPath(root.path).identityPath;
+        root.lastSnapshotUtc = source.header.completedAtUtc;
+        root.lastScanError = "previous warning";
+        configuration.roots.append(root);
+        foldersnap::ConfigurationStore(paths).saveConfiguration(configuration);
+
+        const foldersnap::HistoryStore historyStore(paths);
+        (void)historyStore.commitSnapshot(source, 0);
+        (void)historyStore.commitSnapshot(snapshotAt(2, otherRootId), 0);
+        historyStore.clearRootHistory(source.header.rootId);
+
+        QVERIFY(historyStore.loadHistoryForRoot(source.header.rootId).isEmpty());
+        QCOMPARE(historyStore.loadHistoryForRoot(otherRootId).size(), 1);
+        const auto loadedConfiguration =
+            foldersnap::ConfigurationStore(paths).loadConfiguration().value;
+        QVERIFY(!loadedConfiguration.roots.first().lastSnapshotUtc);
+        QVERIFY(loadedConfiguration.roots.first().lastScanError.isEmpty());
+    }
+
+    void repairRestoresTombstonesAndRebuildsCorruptIndex()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        const auto source = snapshotAt(7);
+        const foldersnap::SnapshotStore snapshotStore(paths);
+        QVERIFY(snapshotStore.saveSnapshot(source) > 0);
+        QVERIFY(snapshotStore.movePayloadToTombstone(source.header.snapshotId));
+        foldersnap::replaceFileAtomically(paths.historyIndexFile, "corrupt index");
+
+        const auto result = foldersnap::HistoryStore(paths).repair();
+        QCOMPARE(result.restoredTombstones, 1);
+        QCOMPARE(result.addedRecords, 1);
+        const auto records = foldersnap::HistoryStore(paths).loadHistory();
+        QCOMPARE(records.size(), 1);
+        QCOMPARE(records.first().snapshotId, source.header.snapshotId);
+        QVERIFY(records.first().payloadAvailable);
+        QVERIFY(!QFile::exists(snapshotStore.tombstonePath(source.header.snapshotId)));
+    }
+
+    void repairRemovesUnreferencedTombstonesAndAddsOrphans()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        const auto orphan = snapshotAt(8);
+        const foldersnap::SnapshotStore snapshotStore(paths);
+        QVERIFY(snapshotStore.saveSnapshot(orphan) > 0);
+        QVERIFY(snapshotStore.movePayloadToTombstone(orphan.header.snapshotId));
+        foldersnap::ConfigurationStore(paths).saveHistoryIndex({});
+        const auto result = foldersnap::HistoryStore(paths).repair();
+        QCOMPARE(result.removedTombstones, 1);
+        QCOMPARE(result.addedRecords, 0);
+        QVERIFY(foldersnap::HistoryStore(paths).loadHistory().isEmpty());
     }
 };
 
