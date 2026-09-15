@@ -56,7 +56,6 @@ set(folder_snap_qml_files
     src/qml/controls/Sparkline.qml
     src/qml/controls/SnapshotArtwork.qml
     src/qml/controls/FolderCard.qml
-    src/qml/controls/SnapshotSlot.qml
     src/qml/preview/UiPreviewState.qml
     src/qml/dialogs/PreviewDialog.qml
     src/qml/effects/AmbientBackground.qml

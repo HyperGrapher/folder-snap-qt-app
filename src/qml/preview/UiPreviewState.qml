@@ -58,54 +58,93 @@ AppState {
         {
             id: 5,
             date: "Today, 14:32",
+            fullDate: "15 September 2026 · 14:32",
             day: "15 SEP",
             time: "14:32",
             description: "After the afternoon build",
             trigger: "Manual",
             size: "12.8 GB",
-            files: "8,426"
+            files: "8,426",
+            folders: "1,184"
         },
         {
             id: 4,
             date: "Today, 09:00",
+            fullDate: "15 September 2026 · 09:00",
             day: "15 SEP",
             time: "09:00",
             description: "Morning checkpoint",
             trigger: "Scheduled",
             size: "12.4 GB",
-            files: "8,390"
+            files: "8,390",
+            folders: "1,176"
         },
         {
             id: 3,
             date: "Yesterday, 18:00",
+            fullDate: "14 September 2026 · 18:00",
             day: "14 SEP",
             time: "18:00",
             description: "Before dependency updates",
             trigger: "Manual",
             size: "12.3 GB",
-            files: "8,364"
+            files: "8,364",
+            folders: "1,171"
         },
         {
             id: 2,
             date: "Yesterday, 12:00",
+            fullDate: "14 September 2026 · 12:00",
             day: "14 SEP",
             time: "12:00",
             description: "Midday snapshot",
             trigger: "Scheduled",
             size: "12.2 GB",
-            files: "8,350"
+            files: "8,350",
+            folders: "1,168"
         },
         {
             id: 1,
             date: "Sep 13, 18:00",
+            fullDate: "13 September 2026 · 18:00",
             day: "13 SEP",
             time: "18:00",
             description: "A fresh starting point",
             trigger: "Manual",
             size: "12.1 GB",
-            files: "8,301"
+            files: "8,301",
+            folders: "1,160"
         }
     ]
+    readonly property var availableSnapshots: {
+        const all = snapshots.slice();
+        if (scenario === "Large comparison") {
+            for (let index = 0; index < 45; ++index) {
+                const day = 12 - Math.floor(index / 3);
+                const hour = [18, 12, 9][index % 3];
+                all.push({
+                    id: -100 - index,
+                    date: "August " + Math.max(1, day) + ", " + String(hour).padStart(2, "0") + ":00",
+                    fullDate: Math.max(1, day) + " August 2026 · " + String(hour).padStart(2, "0") + ":00",
+                    day: Math.max(1, day) + " AUG",
+                    time: String(hour).padStart(2, "0") + ":00",
+                    description: index % 4 === 0 ? "Before a focused work session" : "Scheduled workspace checkpoint",
+                    trigger: index % 3 === 0 ? "Manual" : "Scheduled",
+                    size: (11.9 - index * 0.01).toFixed(2) + " GB",
+                    files: (8290 - index * 3).toLocaleString(),
+                    folders: (1158 - index).toLocaleString()
+                });
+            }
+        }
+        return all;
+    }
+    property string snapshotSearch: ""
+    readonly property var filteredSnapshots: {
+        const query = snapshotSearch.trim().toLowerCase();
+        if (!query)
+            return availableSnapshots;
+        return availableSnapshots.filter(row => [row.fullDate, row.description, row.trigger, row.size, row.files, row.folders].some(value => String(value).toLowerCase().includes(query)));
+    }
     property int beforeId: -1
     property int afterId: -1
     property bool comparisonReady: false
@@ -265,6 +304,7 @@ AppState {
         afterId = -1;
         comparisonReady = false;
         comparing = false;
+        snapshotSearch = "";
         search = "";
         filter = "All changes";
         expanded = ["src", "src/components", "assets"];
@@ -297,6 +337,12 @@ AppState {
             afterId = beforeId;
             beforeId = older;
         }
+    }
+    function clearSnapshotPair() {
+        beforeId = -1;
+        afterId = -1;
+        comparing = false;
+        comparisonReady = false;
     }
     function toggleExpanded(path) {
         expanded = expanded.includes(path) ? expanded.filter(p => p !== path) : expanded.concat([path]);
