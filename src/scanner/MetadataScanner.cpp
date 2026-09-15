@@ -1,8 +1,14 @@
 #include "scanner/MetadataScanner.h"
 
 #include <algorithm>
+#include <atomic>
+#include <condition_variable>
+#include <exception>
 #include <limits>
+#include <mutex>
+#include <thread>
 #include <utility>
+#include <vector>
 
 #include <QDir>
 #include <QDateTime>
@@ -26,6 +32,10 @@ struct DirectoryWork
     QString relativePath;
 };
 
+class ScanCancelled final
+{
+};
+
 qint64 timestampNanoseconds(const QDateTime &timestamp)
 {
     if (!timestamp.isValid())
@@ -41,10 +51,10 @@ qint64 timestampNanoseconds(const QDateTime &timestamp)
     return milliseconds * 1000000;
 }
 
-void addWarning(Snapshot &snapshot, const QString &path, WarningOperation operation,
+void addWarning(QList<ScanWarning> &warnings, const QString &path, WarningOperation operation,
                 WarningCategory category, const QString &message)
 {
-    snapshot.header.scanWarnings.append({path, operation, category, message});
+    warnings.append({path, operation, category, message});
 }
 
 EntryType entryType(const QFileInfo &info)
@@ -75,7 +85,7 @@ quint32 fileAttributes(const QFileInfo &info)
 #endif
 }
 
-bool appendEntry(Snapshot &snapshot, const QFileInfo &info, const QString &relativePath,
+bool appendEntry(QList<SnapshotEntry> &entries, const QFileInfo &info, const QString &relativePath,
                  EntryType type)
 {
     SnapshotEntry entry;
@@ -97,8 +107,16 @@ bool appendEntry(Snapshot &snapshot, const QFileInfo &info, const QString &relat
     }
     entry.modifiedNs = timestampNanoseconds(info.lastModified());
     entry.createdNs = timestampNanoseconds(info.birthTime());
-    snapshot.entries.append(std::move(entry));
+    entries.append(std::move(entry));
     return true;
+}
+
+void checkCancelled(const MetadataScanner::CancellationCallback &cancelled)
+{
+    if (cancelled && cancelled())
+    {
+        throw ScanCancelled{};
+    }
 }
 } // namespace
 
@@ -122,6 +140,12 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
             return result;
         }
 
+        if (request.directoryWorkerCount < 1 || request.directoryWorkerCount > 32)
+        {
+            result.error = "The directory worker count must be between 1 and 32.";
+            return result;
+        }
+
         const IgnoreMatcher matcher(request.ignoreRules, request.protectedSubtree);
         result.snapshot.header.snapshotId = createId();
         result.snapshot.header.rootId = request.rootId;
@@ -132,71 +156,175 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
         result.snapshot.header.ignoreConfig = {request.ignoreRules,
                                                IgnoreMatcher::rulesHash(request.ignoreRules)};
 
-        QList<DirectoryWork> pending{{request.root.displayPath, {}}};
-        qint64 processedEntries = 0;
-        while (!pending.isEmpty())
+        struct SharedWork
         {
-            if (cancelled())
+            std::mutex mutex;
+            std::condition_variable available;
+            QList<DirectoryWork> pending;
+            QList<SnapshotEntry> entries;
+            QList<ScanWarning> warnings;
+            QString failure;
+            int activeDirectories{0};
+        } shared;
+        shared.pending.append({request.root.displayPath, {}});
+
+        std::atomic_bool wasCancelled{false};
+        std::atomic_bool failed{false};
+        std::atomic<qint64> processedEntries{0};
+        std::mutex progressMutex;
+        int reportedProgress = 0;
+        const auto reportProgress = [&]()
+        {
+            if (!progress)
             {
-                result.cancelled = true;
-                return result;
+                return;
             }
-            const DirectoryWork directory = pending.takeLast();
-            const QDir currentDirectory(directory.absolutePath);
-            if (!currentDirectory.isReadable())
+            const qint64 processed = processedEntries.load();
+            const int candidate = std::min(95, 5 + static_cast<int>(processed / 256));
+            std::lock_guard lock(progressMutex);
+            if (candidate <= reportedProgress)
             {
-                addWarning(result.snapshot, directory.relativePath, WarningOperation::Enumerate,
-                           WarningCategory::AccessDenied, "The folder could not be read.");
-                continue;
+                return;
             }
-            const QFileInfoList children = currentDirectory.entryInfoList(
-                QDir::NoDotAndDotDot | QDir::AllEntries | QDir::Hidden | QDir::System, QDir::Name);
-            for (const QFileInfo &info : children)
+            reportedProgress = candidate;
+            progress(candidate);
+        };
+
+        const auto worker = [&]()
+        {
+            while (!wasCancelled.load() && !failed.load())
             {
-                if (cancelled())
+                DirectoryWork directory;
                 {
-                    result.cancelled = true;
-                    return result;
-                }
-                const QString relativePath = normalizeRelativePath(
-                    QDir(request.root.displayPath).relativeFilePath(info.filePath()));
-                const EntryType type = entryType(info);
-                const bool isDirectory = type == EntryType::Directory;
-                const IgnoreMatch match = matcher.testPath(relativePath, isDirectory);
-                if (!match.included)
-                {
-                    if (isDirectory && !matcher.canPruneDirectory(relativePath))
+                    std::unique_lock lock(shared.mutex);
+                    shared.available.wait(lock,
+                                          [&]()
+                                          {
+                                              return wasCancelled.load() || failed.load() ||
+                                                     !shared.pending.isEmpty() ||
+                                                     shared.activeDirectories == 0;
+                                          });
+                    if (wasCancelled.load() || failed.load() || shared.pending.isEmpty())
                     {
-                        pending.append({info.filePath(), relativePath});
+                        return;
                     }
-                    continue;
+                    directory = shared.pending.takeLast();
+                    ++shared.activeDirectories;
                 }
-                if (!appendEntry(result.snapshot, info, relativePath, type))
+
+                QList<SnapshotEntry> directoryEntries;
+                QList<ScanWarning> directoryWarnings;
+                QList<DirectoryWork> discoveredDirectories;
+                try
                 {
-                    addWarning(result.snapshot, relativePath, WarningOperation::Stat,
-                               WarningCategory::Io, "The file size could not be read.");
-                    continue;
+                    checkCancelled(cancelled);
+                    const QDir currentDirectory(directory.absolutePath);
+                    if (!currentDirectory.isReadable())
+                    {
+                        addWarning(directoryWarnings, directory.relativePath,
+                                   WarningOperation::Enumerate, WarningCategory::AccessDenied,
+                                   "The folder could not be read.");
+                    }
+                    else
+                    {
+                        const QFileInfoList children = currentDirectory.entryInfoList(
+                            QDir::NoDotAndDotDot | QDir::AllEntries | QDir::Hidden | QDir::System,
+                            QDir::Name);
+                        for (const QFileInfo &info : children)
+                        {
+                            checkCancelled(cancelled);
+                            const QString relativePath = normalizeRelativePath(
+                                QDir(request.root.displayPath).relativeFilePath(info.filePath()));
+                            const EntryType type = entryType(info);
+                            const bool isDirectory = type == EntryType::Directory;
+                            const IgnoreMatch match = matcher.testPath(relativePath, isDirectory);
+                            if (!match.included)
+                            {
+                                if (isDirectory && !matcher.canPruneDirectory(relativePath))
+                                {
+                                    discoveredDirectories.append({info.filePath(), relativePath});
+                                }
+                                continue;
+                            }
+                            if (!appendEntry(directoryEntries, info, relativePath, type))
+                            {
+                                addWarning(directoryWarnings, relativePath, WarningOperation::Stat,
+                                           WarningCategory::Io, "The file size could not be read.");
+                                continue;
+                            }
+                            if (isDirectory)
+                            {
+                                discoveredDirectories.append({info.filePath(), relativePath});
+                            }
+                            ++processedEntries;
+                            reportProgress();
+                        }
+                    }
                 }
-                if (isDirectory)
+                catch (const ScanCancelled &)
                 {
-                    pending.append({info.filePath(), relativePath});
+                    wasCancelled = true;
                 }
-                ++processedEntries;
-                if (progress && (processedEntries % 32 == 0))
+                catch (const std::exception &exception)
                 {
-                    progress(std::min(95, 5 + static_cast<int>(processedEntries / 32)));
+                    std::lock_guard lock(shared.mutex);
+                    shared.failure = QString::fromUtf8(exception.what());
+                    failed = true;
                 }
+
+                {
+                    std::lock_guard lock(shared.mutex);
+                    --shared.activeDirectories;
+                    if (!wasCancelled.load() && !failed.load())
+                    {
+                        shared.entries.append(directoryEntries);
+                        shared.warnings.append(directoryWarnings);
+                        shared.pending.append(discoveredDirectories);
+                    }
+                }
+                shared.available.notify_all();
             }
+        };
+
+        std::vector<std::thread> workers;
+        workers.reserve(static_cast<size_t>(request.directoryWorkerCount));
+        for (int workerIndex = 0; workerIndex < request.directoryWorkerCount; ++workerIndex)
+        {
+            workers.emplace_back(worker);
         }
+        for (std::thread &workerThread : workers)
+        {
+            workerThread.join();
+        }
+        if (failed.load())
+        {
+            result.error =
+                shared.failure.isEmpty() ? "The folder could not be scanned." : shared.failure;
+            return result;
+        }
+        if (wasCancelled.load() || (cancelled && cancelled()))
+        {
+            result.cancelled = true;
+            return result;
+        }
+
+        result.snapshot.entries = std::move(shared.entries);
+        result.snapshot.header.scanWarnings = std::move(shared.warnings);
         result.snapshot.header.completedAtUtc.nanoseconds =
             timestampNanoseconds(QDateTime::currentDateTimeUtc());
         std::sort(result.snapshot.entries.begin(), result.snapshot.entries.end(),
-                  [](const SnapshotEntry &left, const SnapshotEntry &right)
-                  { return left.path < right.path; });
+                  [&cancelled](const SnapshotEntry &left, const SnapshotEntry &right)
+                  {
+                      checkCancelled(cancelled);
+                      return left.path < right.path;
+                  });
         std::sort(result.snapshot.header.scanWarnings.begin(),
                   result.snapshot.header.scanWarnings.end(),
-                  [](const ScanWarning &left, const ScanWarning &right)
-                  { return left.path < right.path; });
+                  [&cancelled](const ScanWarning &left, const ScanWarning &right)
+                  {
+                      checkCancelled(cancelled);
+                      return left.path < right.path;
+                  });
         for (const SnapshotEntry &entry : result.snapshot.entries)
         {
             if (entry.type == EntryType::File)
@@ -213,10 +341,14 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
                 ++result.snapshot.header.otherCount;
             }
         }
-        if (progress)
+        if (progress && !(cancelled && cancelled()))
         {
             progress(100);
         }
+    }
+    catch (const ScanCancelled &)
+    {
+        result.cancelled = true;
     }
     catch (const DomainError &error)
     {

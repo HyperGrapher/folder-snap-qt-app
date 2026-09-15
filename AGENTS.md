@@ -92,3 +92,13 @@ Bad:
 
 - Use simple, understandable English
 - use terms and terminology which are very clear, widely known.
+
+## Build and verification efficiency
+
+- Keep all build products and temporary build logs under the existing `build/` directory when practical. The repository-root `build.log` is ignored and must not be committed.
+- Do not stream ordinary compiler output into the conversation. Use `cmake --build build --parallel 2 > build.log 2>&1`; inspect `build.log` only when the command fails, and then read only the relevant tail or error context.
+- Do not repeatedly poll or wait on a slow build just to display progress. Start one build, let it finish in the background when the shell returns a running-process handle, and check its result once before relying on the artifacts.
+- Prefer the narrowest incremental target affected by the change, such as `cmake --build build --target tst_scanner --parallel 2`, followed by the matching CTest selection. Use a full application build only after CMake/toolchain changes, public-header or dependency changes, release checks, or when a targeted build cannot validate the affected code.
+- Run focused tests first. Run the complete test suite only when shared infrastructure, cross-module behavior, or release readiness makes it useful.
+- Do not clean or regenerate the single `build/` directory for ordinary source edits. Preserve incremental compiler results and avoid rebuilding unrelated QML/generated targets.
+- Never commit generated files, binaries, deployment folders, or build logs. Check `git status --short` before committing.

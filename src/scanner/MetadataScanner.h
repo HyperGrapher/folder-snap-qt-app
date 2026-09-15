@@ -19,6 +19,7 @@ struct ScanRequest
     QStringList ignoreRules;
     std::optional<QString> protectedSubtree;
     SnapshotTrigger trigger{SnapshotTrigger::Manual};
+    int directoryWorkerCount{4};
 };
 
 struct ScanResult

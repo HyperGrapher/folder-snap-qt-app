@@ -2,6 +2,7 @@ build/
 .vs/
 out/
 *.user
+build.log
 
 FROM_OTHER_QT_APP/
 third_party/

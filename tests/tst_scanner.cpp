@@ -81,6 +81,64 @@ class ScannerTest final : public QObject
         QVERIFY(result.cancelled);
         QVERIFY(result.error.isEmpty());
     }
+
+    void workerCountsProduceTheSameSnapshot()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        QVERIFY(QDir().mkpath(temporaryDirectory.filePath("one/two")));
+        writeFile(temporaryDirectory.filePath("top.txt"), "top");
+        writeFile(temporaryDirectory.filePath("one/child.txt"), "child");
+        writeFile(temporaryDirectory.filePath("one/two/leaf.txt"), "leaf");
+
+        foldersnap::ScanRequest request;
+        request.rootId = foldersnap::createId();
+        request.displayTitle = "Workers";
+        request.root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        request.directoryWorkerCount = 1;
+        const foldersnap::ScanResult singleWorker =
+            foldersnap::MetadataScanner::scan(request, {}, [] { return false; });
+
+        request.directoryWorkerCount = 4;
+        const foldersnap::ScanResult fourWorkers =
+            foldersnap::MetadataScanner::scan(request, {}, [] { return false; });
+
+        QVERIFY2(singleWorker.error.isEmpty(), qPrintable(singleWorker.error));
+        QVERIFY2(fourWorkers.error.isEmpty(), qPrintable(fourWorkers.error));
+        const auto entryDescriptions = [](const QList<foldersnap::SnapshotEntry> &entries)
+        {
+            QStringList descriptions;
+            for (const foldersnap::SnapshotEntry &entry : entries)
+            {
+                descriptions.append(QString("%1|%2|%3|%4|%5")
+                                        .arg(entry.path)
+                                        .arg(static_cast<int>(entry.type))
+                                        .arg(entry.size)
+                                        .arg(entry.attributes)
+                                        .arg(entry.linkTarget));
+            }
+            return descriptions;
+        };
+        QCOMPARE(entryDescriptions(singleWorker.snapshot.entries),
+                 entryDescriptions(fourWorkers.snapshot.entries));
+        QCOMPARE(singleWorker.snapshot.header.scanWarnings,
+                 fourWorkers.snapshot.header.scanWarnings);
+    }
+
+    void rejectsOutOfRangeWorkerCount()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+
+        foldersnap::ScanRequest request;
+        request.rootId = foldersnap::createId();
+        request.root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        request.directoryWorkerCount = 33;
+        const foldersnap::ScanResult result =
+            foldersnap::MetadataScanner::scan(request, {}, [] { return false; });
+
+        QCOMPARE(result.error, QString("The directory worker count must be between 1 and 32."));
+    }
 };
 
 QTEST_MAIN(ScannerTest)
