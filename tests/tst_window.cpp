@@ -206,14 +206,9 @@ class WindowTest final : public QObject
         QVERIFY(take);
         take->forceActiveFocus(Qt::TabFocusReason);
         QTest::keyClick(m_window, Qt::Key_Return);
-        QTRY_VERIFY(m_state->property("scanning").toBool());
-        QTRY_VERIFY_WITH_TIMEOUT(!m_state->property("scanning").toBool(), 5000);
+        QVERIFY(!m_state->property("scanning").toBool());
         m_state->setProperty("toast", "");
         m_state->setSelectedSection(AppState::Section::Compare);
-        m_state->setProperty("beforeId", 4);
-        m_state->setProperty("afterId", 5);
-        m_state->setProperty("comparing", true);
-        QTRY_VERIFY(m_state->property("comparisonReady").toBool());
         QTest::qWait(150);
         for (const QString &sheet :
              {"add", "folder", "detail", "warnings", "exportComparison", "cleanup", "delete"})
@@ -223,10 +218,8 @@ class WindowTest final : public QObject
             m_state->setProperty("sheet", "");
             QTest::qWait(130);
         }
-        m_state->setProperty("scenario", "Empty library");
         m_state->setSelectedSection(AppState::Section::Overview);
         QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
-        m_state->setProperty("scenario", "Sample library");
     }
     void resizeAndWindowStates()
     {
@@ -240,9 +233,6 @@ class WindowTest final : public QObject
             QTest::qWait(100);
         }
         m_state->setSelectedSection(AppState::Section::Compare);
-        m_state->setProperty("beforeId", 4);
-        m_state->setProperty("afterId", 5);
-        m_state->setProperty("comparisonReady", true);
         QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
         m_state->setProperty("sheet", "folder");
         QTest::qWait(200);

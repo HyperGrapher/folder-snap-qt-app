@@ -167,7 +167,7 @@ ColumnLayout {
                                 primary: false
                                 quiet: true
                                 glyph: "link"
-                                onClicked: page.appState.toast = "Preview: this would open the folder in Explorer."
+                                onClicked: page.appState.openCurrentFolder()
                             }
                         }
                     }
@@ -223,8 +223,8 @@ ColumnLayout {
                                         font.weight: Font.DemiBold
                                     }
                                     Badge {
-                                        text: page.appState.payloadMissing && modelData.id === 5 ? "Unavailable" : modelData.trigger
-                                        tone: page.appState.payloadMissing && modelData.id === 5 ? Theme.warning : Theme.muted
+                                        text: !modelData.payloadAvailable ? "Unavailable" : modelData.trigger
+                                        tone: !modelData.payloadAvailable ? Theme.warning : Theme.muted
                                     }
                                 }
                                 LabelText {
@@ -254,7 +254,10 @@ ColumnLayout {
                                 primary: false
                                 quiet: true
                                 implicitHeight: 30
-                                onClicked: page.appState.openSheet("detail", modelData.id)
+                                onClicked: {
+                                    page.appState.detailId = modelData.id;
+                                    page.appState.openSheet("detail");
+                                }
                             }
                         }
                     }

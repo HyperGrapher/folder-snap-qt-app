@@ -3,63 +3,50 @@ import QtTest
 import FolderSnap
 
 TestCase {
-    name: "PreviewWorkflows"
+    name: "LiveWorkflows"
+
     UiPreviewState {
         id: state
     }
+
     function init() {
-        state.scenario = "Sample library";
-        state.chooseRoot(0);
+        state.clearSnapshotPair();
         state.sheet = "";
-    }
-    function test_explicitPairAndRollover() {
-        compare(state.hasPair, false);
-        state.chooseSnapshot(5);
-        compare(state.hasPair, false);
-        state.chooseSnapshot(3);
-        compare(state.beforeId, 3);
-        compare(state.afterId, 5);
-        state.chooseSnapshot(4);
-        compare(state.beforeId, 4);
-        compare(state.afterId, 5);
-        state.chooseSnapshot(5);
-        compare(state.afterId, -1);
-        state.chooseRoot(1);
-        compare(state.beforeId, -1);
-        compare(state.hasPair, false);
-    }
-    function test_treeFilteringRetainsAncestors() {
-        state.search = "FolderCard";
-        compare(state.displayedChanges.length, 3);
-        compare(state.displayedChanges[0].path, "src");
-        compare(state.displayedChanges[2].name, "FolderCard.qml");
+        state.snapshotSearch = "";
         state.search = "";
-        state.filter = "Removed";
-        compare(state.displayedChanges.length, 3);
-        state.search = "no-such-file";
+        state.filter = "All changes";
+    }
+
+    function test_startsWithStoredDataOnly() {
+        compare(state.hasPair, false);
+        verify(!state.scanning);
+        verify(!state.comparing);
+        compare(state.changes.length, 0);
+    }
+
+    function test_invalidSelectionsDoNotCreatePair() {
+        state.chooseRoot(999);
+        state.chooseSnapshot("not-a-snapshot");
+        compare(state.beforeId, "");
+        compare(state.afterId, "");
+        compare(state.hasPair, false);
+    }
+
+    function test_emptyComparisonFiltersRemainEmpty() {
+        state.search = "folder";
         compare(state.displayedChanges.length, 0);
+        state.filter = "Added";
+        compare(state.displayedChanges.length, 0);
+        compare(state.cleanupCandidates.length, 0);
     }
-    function test_collapsingAndLargeList() {
-        state.toggleExpanded("src");
-        verify(!state.displayedChanges.some(row => row.path === "src/main.cpp"));
-        state.scenario = "Large comparison";
-        verify(state.displayedChanges.length > 2000);
-    }
-    function test_cleanupStartsEmpty() {
+
+    function test_dialogStateResetsTransientCleanup() {
+        state.cleanupSelection = ["file.txt"];
+        state.cleanupReviewed = true;
+        state.cleanupResult = "old";
         state.openSheet("cleanup");
         compare(state.cleanupSelection.length, 0);
-        state.toggleCleanup(state.cleanupCandidates[0].path);
-        compare(state.cleanupSelection.length, 1);
-        state.openSheet("cleanup");
-        compare(state.cleanupSelection.length, 0);
-        verify(state.cleanupCandidates.every(row => row.status === "Added"));
-    }
-    function test_missingAndArchived() {
-        state.scenario = "Missing snapshot";
-        state.chooseSnapshot(5);
-        compare(state.beforeId, -1);
-        state.chooseRoot(3);
-        state.takeSnapshot();
-        compare(state.scanning, false);
+        compare(state.cleanupReviewed, false);
+        compare(state.cleanupResult, "");
     }
 }

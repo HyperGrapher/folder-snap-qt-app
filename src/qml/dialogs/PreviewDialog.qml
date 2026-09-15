@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import FolderSnap
 
@@ -17,6 +18,17 @@ Dialog {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     visible: kind !== ""
     onClosed: appState.sheet = ""
+    FolderDialog {
+        id: folderChooser
+        title: "Choose a folder to watch"
+        onAccepted: {
+            let value = selectedFolder.toString().replace("file:///", "");
+            value = decodeURIComponent(value);
+            if (/^\/[A-Za-z]:/.test(value))
+                value = value.substring(1);
+            pathInput.text = value;
+        }
+    }
     background: Panel {
         color: "#1c272c"
         border.color: "#53616a"
@@ -90,7 +102,7 @@ Dialog {
         spacing: 16
         BodyText {
             Layout.fillWidth: true
-            text: dialog.kind === "add" ? "Start with one folder. FolderSnap remembers its file details so you can see what changes over time." : dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "A complete, portable report of this " + (dialog.kind === "export" ? "snapshot" : "comparison") + ". Ready to open offline." : dialog.kind === "cleanup" ? "Only items added between these snapshots are eligible. Nothing is selected automatically." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
+            text: dialog.kind === "add" ? "Start with one folder. FolderSnap remembers its file details so you can see what changes over time." : dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Offline report export is planned for a later milestone." : dialog.kind === "cleanup" ? "Added entries can be reviewed here. Moving live files is disabled until the safety workflow is implemented." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
             font.pixelSize: 12
         }
         ColumnLayout {
@@ -116,13 +128,24 @@ Dialog {
                 font.letterSpacing: 1
                 color: Theme.muted
             }
-            SearchField {
-                id: pathInput
+            RowLayout {
                 Layout.fillWidth: true
-                leftPadding: 12
-                readOnly: dialog.kind === "folder"
-                text: dialog.kind === "folder" ? dialog.appState.currentRoot.path : ""
-                placeholderText: "C:/Users/Burak/My folder"
+                SearchField {
+                    id: pathInput
+                    Layout.fillWidth: true
+                    leftPadding: 12
+                    readOnly: dialog.kind === "folder"
+                    text: dialog.kind === "folder" ? dialog.appState.currentRoot.path : ""
+                    placeholderText: "C:/Users/Burak/My folder"
+                }
+                ActionButton {
+                    visible: dialog.kind === "add"
+                    animationsEnabled: dialog.motion.transitionsEnabled
+                    text: "Browse"
+                    primary: false
+                    glyph: "folder"
+                    onClicked: folderChooser.open()
+                }
             }
             RowLayout {
                 visible: dialog.kind === "folder"
@@ -183,7 +206,7 @@ Dialog {
                     anchors.margins: 18
                     ColumnLayout {
                         LabelText {
-                            text: dialog.appState.snapshot(dialog.appState.detailId).size || "12.8 GB"
+                            text: dialog.appState.snapshot(dialog.appState.detailId).size || "—"
                             font.pixelSize: 24
                             font.weight: Font.DemiBold
                         }
@@ -198,7 +221,7 @@ Dialog {
                     }
                     ColumnLayout {
                         LabelText {
-                            text: dialog.appState.snapshot(dialog.appState.detailId).files || "8,426"
+                            text: dialog.appState.snapshot(dialog.appState.detailId).files || "—"
                             font.pixelSize: 24
                             font.weight: Font.DemiBold
                         }
@@ -212,8 +235,8 @@ Dialog {
                         Layout.fillWidth: true
                     }
                     Badge {
-                        text: dialog.appState.payloadMissing && dialog.appState.detailId === 5 ? "Unavailable" : "Saved"
-                        tone: dialog.appState.payloadMissing && dialog.appState.detailId === 5 ? Theme.warning : Theme.accent
+                        text: !dialog.appState.snapshot(dialog.appState.detailId).payloadAvailable ? "Unavailable" : "Saved"
+                        tone: !dialog.appState.snapshot(dialog.appState.detailId).payloadAvailable ? Theme.warning : Theme.accent
                     }
                 }
             }
@@ -237,14 +260,7 @@ Dialog {
                     text: "Save description"
                     primary: false
                     onClicked: {
-                        const rows = dialog.appState.snapshots.slice();
-                        const i = rows.findIndex(row => row.id === dialog.appState.detailId);
-                        if (i >= 0)
-                            rows[i] = Object.assign({}, rows[i], {
-                                description: descriptionInput.text
-                            });
-                        dialog.appState.snapshots = rows;
-                        dialog.appState.toast = "Sample description saved.";
+                        dialog.appState.saveDescription(descriptionInput.text);
                     }
                 }
                 ActionButton {
@@ -261,7 +277,7 @@ Dialog {
                     animationsEnabled: dialog.motion.transitionsEnabled
                     text: "Export snapshot"
                     glyph: "export"
-                    enabled: !(dialog.appState.payloadMissing && dialog.appState.detailId === 5)
+                    enabled: dialog.appState.snapshot(dialog.appState.detailId).payloadAvailable
                     onClicked: dialog.appState.sheet = "export"
                 }
                 Item {
@@ -351,12 +367,9 @@ Dialog {
                         }
                         ActionButton {
                             animationsEnabled: dialog.motion.transitionsEnabled
-                            text: "Export"
+                            text: "Export unavailable"
                             primary: false
-                            onClicked: {
-                                dialog.appState.toast = "Preview: " + modelData.name + " export complete. No file was written.";
-                                dialog.close();
-                            }
+                            enabled: false
                         }
                     }
                 }
@@ -382,44 +395,6 @@ Dialog {
                         dialog.appState.cleanupReviewed = false;
                         dialog.appState.cleanupSelection = dialog.appState.cleanupSelection.length === dialog.appState.cleanupCandidates.length ? [] : dialog.appState.cleanupCandidates.map(row => row.path);
                     }
-                }
-            }
-            CheckBox {
-                id: componentGroup
-                Layout.fillWidth: true
-                implicitHeight: 34
-                readonly property var childrenPaths: dialog.appState.cleanupCandidates.filter(row => row.path.startsWith("src/components/")).map(row => row.path)
-                readonly property int selectedCount: childrenPaths.filter(path => dialog.appState.cleanupSelection.includes(path)).length
-                checkState: selectedCount === 0 ? Qt.Unchecked : selectedCount === childrenPaths.length ? Qt.Checked : Qt.PartiallyChecked
-                tristate: true
-                Accessible.name: "Select added items in src/components"
-                nextCheckState: function () {
-                    return checkState;
-                }
-                onClicked: {
-                    dialog.appState.cleanupReviewed = false;
-                    const rest = dialog.appState.cleanupSelection.filter(path => !childrenPaths.includes(path));
-                    dialog.appState.cleanupSelection = selectedCount === childrenPaths.length ? rest : rest.concat(childrenPaths);
-                }
-                indicator: Rectangle {
-                    x: 10
-                    y: 8
-                    width: 18
-                    height: 18
-                    radius: 4
-                    color: componentGroup.checkState !== Qt.Unchecked ? Theme.accent : "transparent"
-                    border.color: componentGroup.visualFocus ? Theme.text : "#648273"
-                    LabelText {
-                        anchors.centerIn: parent
-                        text: componentGroup.checkState === Qt.PartiallyChecked ? "−" : "✓"
-                        visible: componentGroup.checkState !== Qt.Unchecked
-                        color: "#183b2f"
-                    }
-                }
-                contentItem: LabelText {
-                    text: "src / components"
-                    leftPadding: 40
-                    font.weight: Font.DemiBold
                 }
             }
             Repeater {
@@ -470,7 +445,7 @@ Dialog {
                     anchors.margins: 14
                     font.pixelSize: 11
                     color: Theme.warning
-                    text: dialog.appState.cleanupResult !== "" ? dialog.appState.cleanupResult : dialog.appState.cleanupReviewed ? dialog.appState.cleanupSelection.length + " ready · 0 blocked · 0 already missing. Sample preflight complete." : "Before anything moves, FolderSnap checks that selected files are unchanged and still inside the watched folder."
+                    text: "Cleanup is intentionally disabled until a safe, transactional file operation is implemented."
                 }
             }
         }
@@ -489,7 +464,7 @@ Dialog {
             visible: dialog.kind !== "detail" && !dialog.isExport
             Layout.fillWidth: true
             LabelText {
-                text: "PREVIEW · NO FILE CHANGES"
+                text: "LOCAL METADATA · ORIGINALS UNTOUCHED"
                 font.pixelSize: 8
                 font.letterSpacing: 0.8
                 color: Theme.muted
@@ -504,17 +479,13 @@ Dialog {
             }
             ActionButton {
                 animationsEnabled: dialog.motion.transitionsEnabled
-                text: dialog.kind === "add" ? "Add folder" : dialog.kind === "folder" ? "Save preferences" : dialog.kind === "cleanup" ? (dialog.appState.cleanupReviewed ? "Move to Recycle Bin" : "Check selected items") : dialog.isDestructive ? (dialog.kind === "clear" ? "Clear history" : "Delete snapshot") : "Done"
+                text: dialog.kind === "add" ? "Add folder" : dialog.kind === "folder" ? "Save preferences" : dialog.kind === "cleanup" ? "Cleanup unavailable" : dialog.isDestructive ? (dialog.kind === "clear" ? "Clear history" : "Delete snapshot") : "Done"
                 glyph: dialog.kind === "add" ? "plus" : ""
-                enabled: dialog.kind === "add" ? nameInput.text.trim() !== "" && pathInput.text.trim() !== "" : dialog.kind === "cleanup" ? dialog.appState.cleanupSelection.length > 0 && dialog.appState.cleanupResult === "" : true
+                enabled: dialog.kind === "add" ? nameInput.text.trim() !== "" && pathInput.text.trim() !== "" : dialog.kind !== "cleanup"
                 primary: !dialog.isDestructive
                 danger: dialog.isDestructive
                 onClicked: {
                     if (dialog.kind === "cleanup") {
-                        if (!dialog.appState.cleanupReviewed)
-                            dialog.appState.cleanupReviewed = true;
-                        else
-                            dialog.appState.cleanupResult = "Sample cleanup complete. No real files were moved. A new snapshot would capture the updated folder.";
                         return;
                     }
                     if (dialog.kind === "add")
@@ -523,8 +494,10 @@ Dialog {
                         dialog.appState.updateRoot(nameInput.text, scheduleInput.currentText, archiveInput.checked);
                         dialog.appState.ignoreRules = ignoreInput.text;
                     }
-                    if (dialog.isDestructive)
-                        dialog.appState.toast = "Preview: " + (dialog.kind === "clear" ? "history cleared" : "snapshot deleted") + ". No stored data was changed.";
+                    if (dialog.kind === "clear")
+                        dialog.appState.clearSelectedRootHistory();
+                    if (dialog.kind === "delete")
+                        dialog.appState.deleteSelectedSnapshot();
                     dialog.close();
                 }
             }

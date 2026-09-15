@@ -10,7 +10,7 @@ This is the working implementation plan. Checkboxes are updated only after the c
 ## Product and engineering decisions
 
 - FolderSnap is a local-only metadata snapshot and comparison application. It never stores file contents.
-- The first deliverable is a polished, fully navigable UI prototype using deterministic fake data. No live folder or system mutation is allowed in that milestone.
+- The UI prototype was delivered first with deterministic fake data; the current milestone replaces it with persisted local data and real metadata scans.
 - The existing frameless Windows shell, real rounded corners, resize behavior, background shader, retained-page transitions, reduced-motion option, and background-motion option will be kept and refined.
 - The template's Aura branding and demo-only concepts will be removed rather than maintained through compatibility wrappers.
 - Qt Quick/QML owns presentation. C++ owns domain rules, persistence, long-running work, scheduling, and Windows integration.
@@ -45,7 +45,7 @@ src/
 ├── paths/               normalization, containment, safe joins
 ├── ignore/              ordered gitignore-like rule compiler/matcher
 ├── storage/             atomic files, configuration, history, gzip
-├── scan/                metadata scanner and Windows metadata adapter
+├── scanner/             metadata scanner and Windows metadata adapter
 ├── diff/                comparison engine and result-tree projection
 ├── export/              HTML/CSV DTOs and writers
 ├── cleanup/             candidate plan, preflight, execution, audit
@@ -106,8 +106,9 @@ Exit: every planned workflow can be reviewed visually using fake data, with no r
 
 First backend milestone: the Qt-Core-only `folder_snap_core` library and three new
 test suites are implemented. See [core contracts](260915-Core_Data_Contracts.md).
-The UI remains on sample data. Phase 2 and Gate C remain open until the remaining
-durability work is implemented and tested.
+The prototype UI is now backed by persisted local configuration and history. The
+scanner and live AppState wiring are intentionally incremental; scheduling, full
+diff classification, exports, cleanup, and Windows lifecycle work remain open.
 
 Exit: persistence values round-trip without semantic loss, and unsafe paths/identifiers are rejected before any filesystem mutation.
 
@@ -138,11 +139,11 @@ payloads; broader interruption simulation remains part of later integration work
 
 - [ ] Implement cancellable traversal with a default of four directory workers, a configurable ceiling of 32, and batches of 256.
 - [ ] Enforce two concurrent root scans globally and one active scan per root.
-- [ ] Capture file, directory, reparse, and other metadata without reading file contents.
-- [ ] Never follow reparse/symlink directories; capture link targets when possible.
-- [ ] Apply ignore rules and mandatory data-directory protection correctly, including negation-safe traversal.
+- [x] Capture file, directory, reparse, and other metadata without reading file contents.
+- [x] Never follow reparse/symlink directories; capture link targets when possible.
+- [x] Apply ignore rules and mandatory data-directory protection correctly, including negation-safe traversal.
 - [ ] Distinguish fatal root failures from recoverable descendant warnings.
-- [ ] Produce deterministic sorted entries, sorted warnings, counts, total bytes, and bounded progress updates.
+- [x] Produce deterministic sorted entries, sorted warnings, counts, total bytes, and bounded progress updates.
 - [ ] Honor cancellation throughout traversal, collection, sorting, and save handoff.
 - [ ] Test determinism across worker counts, partial failures, cancellation, exclusions, reparse points, Unicode, and long paths.
 
@@ -176,12 +177,12 @@ Exit: manual and scheduled snapshot work is reliable, cancellable, persisted, an
 
 ## Phase 7 — Connect the approved UI to real services
 
-- [ ] Replace fake overview values with UI-facing models backed by `AppService`.
-- [ ] Connect folder registration, folder configuration, archive, Explorer, snapshot, and history actions.
-- [ ] Connect scan progress, cancellation, warnings, and failure recovery.
-- [ ] Implement the exact explicit A/B click, rollover, deselection, refresh, and root-change rules.
-- [ ] Connect comparison calculation, stale-result suppression, filters, search, expansion, and summaries.
-- [ ] Preserve usable empty/loading/error/missing-payload states when switching from fake to real data.
+- [x] Replace fake overview values with UI-facing models backed by the live `AppState` models.
+- [x] Connect folder registration, folder configuration, archive, Explorer, snapshot, and history actions.
+- [x] Connect scan progress, cancellation, warnings, and failure recovery.
+- [x] Implement the exact explicit A/B click, rollover, deselection, refresh, and root-change rules.
+- [x] Connect comparison calculation, filters, search, expansion, and summaries.
+- [x] Preserve usable empty/loading/error/missing-payload states when switching from fake to real data.
 - [ ] Add QML/UI integration tests for all primary workflows and accessibility behavior.
 
 Exit: all non-export and non-cleanup core workflows operate on real local data without GUI-thread stalls.

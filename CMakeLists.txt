@@ -41,6 +41,7 @@ add_library(folder_snap_core STATIC
     src/storage/StoragePaths.h src/storage/StoragePaths.cpp
     src/storage/SnapshotStore.h src/storage/SnapshotStore.cpp
     src/storage/HistoryStore.h src/storage/HistoryStore.cpp
+    src/scanner/MetadataScanner.h src/scanner/MetadataScanner.cpp
 )
 target_include_directories(folder_snap_core PUBLIC src)
 target_link_libraries(folder_snap_core PUBLIC Qt6::Core ZLIB::ZLIB)
@@ -96,7 +97,7 @@ qt_add_qml_module(
     SOURCES src/AppState.h src/AppState.cpp
 )
 target_include_directories(folder_snap_ui PUBLIC src)
-target_link_libraries(folder_snap_ui PUBLIC Qt6::Quick Qt6::QuickControls2)
+target_link_libraries(folder_snap_ui PUBLIC folder_snap_core Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent)
 
 qt_add_resources(
     folder_snap_ui app_resources
@@ -145,7 +146,7 @@ endif()
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS QuickTest Test)
 
-    foreach(core_test IN ITEMS paths ignore domain storage)
+    foreach(core_test IN ITEMS paths ignore domain storage scanner)
         qt_add_executable(tst_${core_test} tests/tst_${core_test}.cpp)
         target_link_libraries(tst_${core_test} PRIVATE folder_snap_core Qt6::Test)
         target_compile_definitions(tst_${core_test} PRIVATE

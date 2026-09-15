@@ -153,29 +153,29 @@ ScrollView {
                 model: [
                     {
                         label: "WATCHED FOLDERS",
-                        value: "03",
-                        note: "+ 1 archived",
+                        value: page.appState.visibleRoots.length.toString().padStart(2, "0"),
+                        note: page.appState.activeRootCount + " active · " + (page.appState.visibleRoots.length - page.appState.activeRootCount) + " archived",
                         glyph: "folder",
                         tone: "#94e6c6"
                     },
                     {
                         label: "SAVED SNAPSHOTS",
-                        value: "62",
+                        value: page.appState.totalSnapshotCount.toLocaleString(),
                         note: "Across all folders",
                         glyph: "snapshot",
                         tone: "#b7a8e6"
                     },
                     {
                         label: "FILES IN VIEW",
-                        value: "12,720",
+                        value: page.appState.totalFileCount.toLocaleString(),
                         note: "Metadata, not copies",
                         glyph: "file",
                         tone: "#b6c5dd"
                     },
                     {
                         label: "NEXT SNAPSHOT",
-                        value: "18:00",
-                        note: "Projects · today",
+                        value: "—",
+                        note: "Manual snapshots only",
                         glyph: "clock",
                         tone: "#e9c387"
                     }
@@ -234,7 +234,7 @@ ScrollView {
                 font.weight: Font.DemiBold
             }
             Badge {
-                text: "3 active"
+                text: page.appState.activeRootCount + " active"
                 tone: Theme.muted
             }
             Item {

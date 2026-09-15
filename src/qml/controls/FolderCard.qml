@@ -45,8 +45,8 @@ Panel {
                 Layout.fillWidth: true
             }
             Badge {
-                text: card.root.archived ? "Archived" : "Up to date"
-                tone: card.root.archived ? Theme.muted : Theme.accent
+                text: card.root.archived ? "Archived" : card.root.snapshots === 0 ? "Not scanned" : "Ready"
+                tone: card.root.archived || card.root.snapshots === 0 ? Theme.muted : Theme.accent
             }
         }
         LabelText {
@@ -71,7 +71,7 @@ Panel {
                 font.letterSpacing: -0.7
             }
             LabelText {
-                text: "tracked"
+                text: card.root.snapshots + " snapshots"
                 font.pixelSize: 10
                 color: Theme.muted
                 Layout.alignment: Qt.AlignBottom
@@ -80,11 +80,10 @@ Panel {
             Item {
                 Layout.fillWidth: true
             }
-            Sparkline {
-                Layout.preferredWidth: 72
-                Layout.preferredHeight: 32
-                tone: card.root.color
-                values: card.order === 1 ? [18, 22, 24, 30, 32, 29, 36, 35, 40, 44, 43, 46] : [20, 21, 18, 25, 24, 30, 28, 42, 40, 46, 44, 51]
+            Glyph {
+                name: "snapshot"
+                color: card.root.color
+                font.pixelSize: 16
             }
         }
         Rectangle {

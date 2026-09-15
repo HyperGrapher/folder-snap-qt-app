@@ -87,7 +87,7 @@ Window {
                 color: Theme.accent
             }
             LabelText {
-                text: preview.scanning ? "Taking a sample snapshot… " + preview.scanProgress + "%" : "Local by design"
+                text: preview.scanning ? "Scanning folder… " + preview.scanProgress + "%" : "Local by design"
                 font.pixelSize: 10
                 color: Theme.secondary
             }
@@ -98,15 +98,14 @@ Window {
                 quiet: true
                 implicitHeight: 24
                 onClicked: {
-                    preview.scanning = false;
-                    preview.toast = "Sample scan cancelled.";
+                    preview.cancelScan();
                 }
             }
             Item {
                 Layout.fillWidth: true
             }
             LabelText {
-                text: "Sample data · No files are changed"
+                text: "Local metadata · Originals untouched"
                 font.pixelSize: 10
                 color: Theme.muted
             }
@@ -139,31 +138,6 @@ Window {
         }
         TapHandler {
             onTapped: preview.toast = ""
-        }
-    }
-    Timer {
-        interval: 220
-        repeat: true
-        running: preview.scanning
-        onTriggered: {
-            preview.scanProgress = Math.min(100, preview.scanProgress + 8);
-            if (preview.scanProgress === 100) {
-                if (preview.scenario === "Scan failure") {
-                    preview.scanning = false;
-                    preview.scanError = "Projects is unavailable. Reconnect the drive or check folder permissions, then try again.";
-                    return;
-                }
-                preview.scanning = false;
-                preview.toast = "Sample snapshot complete. Your files have not been scanned.";
-            }
-        }
-    }
-    Timer {
-        interval: 700
-        running: preview.comparing
-        onTriggered: {
-            preview.comparing = false;
-            preview.comparisonReady = true;
         }
     }
     Timer {

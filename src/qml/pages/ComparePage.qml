@@ -229,14 +229,14 @@ ColumnLayout {
                     RowLayout {
                         Layout.fillWidth: true
                         LabelText {
-                            text: page.appState.hasPair ? "A and B selected" : page.appState.beforeId !== -1 || page.appState.afterId !== -1 ? "1 of 2 selected" : "Nothing selected"
+                            text: page.appState.hasPair ? "A and B selected" : page.appState.beforeId !== "" || page.appState.afterId !== "" ? "1 of 2 selected" : "Nothing selected"
                             color: page.appState.hasPair ? Theme.accent : Theme.muted
                             font.pixelSize: 10
                             Layout.fillWidth: true
                         }
                         ActionButton {
                             animationsEnabled: page.motion.transitionsEnabled
-                            visible: page.appState.beforeId !== -1 || page.appState.afterId !== -1
+                            visible: page.appState.beforeId !== "" || page.appState.afterId !== ""
                             text: "Clear"
                             primary: false
                             quiet: true
@@ -248,10 +248,10 @@ ColumnLayout {
                         animationsEnabled: page.motion.transitionsEnabled
                         objectName: "compareButton"
                         Layout.fillWidth: true
-                        text: page.appState.comparing ? "Comparing sample metadata…" : "Compare A and B"
+                        text: page.appState.comparing ? "Comparing metadata…" : "Compare A and B"
                         glyph: "compare"
                         enabled: page.appState.hasPair && !page.appState.comparing
-                        onClicked: page.appState.comparing = true
+                        onClicked: page.appState.startComparison()
                     }
                 }
             }
@@ -272,7 +272,7 @@ ColumnLayout {
                 }
                 Badge {
                     visible: page.appState.comparisonReady
-                    text: "8,390 entries checked"
+                    text: page.appState.comparedCount.toLocaleString() + " entries checked"
                     tone: Theme.muted
                 }
                 Item {
@@ -293,12 +293,12 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 title: page.appState.comparing ? "Putting the moments together…" : page.appState.hasPair ? "A and B are ready." : "Two moments tell the story."
-                message: page.appState.comparing ? "Comparing sample metadata. Your files stay untouched." : page.appState.hasPair ? "Use Compare A and B to reveal what changed between the selected snapshots." : "Choose any two snapshots from the history.\nThe older one becomes A and the newer one becomes B."
+                message: page.appState.comparing ? "Comparing saved metadata. Your files stay untouched." : page.appState.hasPair ? "Use Compare A and B to reveal what changed between the selected snapshots." : "Choose any two snapshots from the history.\nThe older one becomes A and the newer one becomes B."
                 actionText: page.appState.hasPair ? "Compare A and B" : "Browse the history"
                 glyph: "compare"
                 onTriggered: {
                     if (page.appState.hasPair)
-                        page.appState.comparing = true;
+                        page.appState.startComparison();
                     else
                         snapshotList.positionViewAtBeginning();
                 }
@@ -312,22 +312,22 @@ ColumnLayout {
                     model: [
                         {
                             label: "Added",
-                            value: page.appState.scenario === "Large comparison" ? "2,003" : "3",
+                            value: page.appState.addedCount,
                             tone: "#94e6c6"
                         },
                         {
                             label: "Removed",
-                            value: "2",
+                            value: page.appState.removedCount,
                             tone: "#eda6a6"
                         },
                         {
                             label: "Modified",
-                            value: "2",
+                            value: page.appState.modifiedCount,
                             tone: "#e9c387"
                         },
                         {
                             label: "Net size",
-                            value: "+410 MB",
+                            value: page.appState.netSize,
                             tone: "#94e6c6"
                         }
                     ]
@@ -371,7 +371,7 @@ ColumnLayout {
                         color: Theme.warning
                     }
                     LabelText {
-                        text: "2 unreadable paths · Some changes may be uncertain."
+                        text: page.appState.warningCount + " unreadable paths · Some changes may be uncertain."
                         color: Theme.warning
                         font.pixelSize: 10
                         Layout.fillWidth: true
@@ -553,7 +553,7 @@ ColumnLayout {
                             font.pixelSize: 11
                         }
                         LabelText {
-                            text: "8,383 unchanged · Originals untouched"
+                            text: page.appState.unchangedCount + " unchanged · Originals untouched"
                             font.pixelSize: 9
                             color: Theme.muted
                             Layout.fillWidth: true

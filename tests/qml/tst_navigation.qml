@@ -28,7 +28,6 @@ TestCase {
         motion.windowMinimized = false;
         state.selectedSection = AppState.Overview;
         state.chooseRoot(0);
-        state.scanning = false;
         motion.reducedMotion = false;
     }
     function assertSettled(index) {
@@ -67,15 +66,14 @@ TestCase {
     function test_statePreserved() {
         host.selectPage(2);
         assertSettled(2);
-        state.chooseSnapshot(4);
-        state.chooseSnapshot(5);
+        state.chooseSnapshot("not-a-snapshot");
         state.search = "main";
         host.selectPage(1);
         assertSettled(1);
         host.selectPage(2);
         assertSettled(2);
-        compare(state.beforeId, 4);
-        compare(state.afterId, 5);
+        compare(state.beforeId, "");
+        compare(state.afterId, "");
         compare(state.search, "main");
     }
     function test_reduceDuringTransition() {

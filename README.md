@@ -1,10 +1,9 @@
 # FolderSnap
 
-A Windows 10/11 FolderSnap interface foundation built with C++20 and Qt Quick. Four retained pages,
-custom controls, a native frameless window, and one GPU shader explore color and
-motion. The UI still uses local mock state and resets when closed. The first backend
-milestone adds validated snapshot/configuration contracts, Windows path safety,
-and ordered exclusion rules independently of the UI.
+A Windows 10/11 FolderSnap metadata snapshot app built with C++20 and Qt Quick. It
+keeps the frameless rounded shell, animated transitions, and ambient shader while
+using persisted local configuration and history. Add a real folder, scan its
+metadata, and compare two saved snapshots; file contents are never copied.
 
 ## Backend foundation
 
@@ -17,13 +16,14 @@ Configuration and the lightweight history index now save atomically in the user'
 local application-data folder. Invalid saved JSON is preserved in a `corrupt/`
 subfolder before FolderSnap returns safe defaults. Snapshot payloads are gzip
 compressed; history commits are serialized, descriptions update only the index, and
-retention is isolated per watched root. This milestone does not yet scan folders or
-connect live data to the interface.
+retention is isolated per watched root. The current live milestone scans folders on
+a worker thread and connects folder, snapshot, history, and comparison state to the
+interface. Scheduling, exports, cleanup, and Windows lifecycle integration remain planned.
 
 Run only the new core tests after building:
 
 ```powershell
-ctest --test-dir build --output-on-failure -R '^(domain|paths|ignore|storage)$'
+ctest --test-dir build --output-on-failure -R '^(domain|paths|ignore|storage|scanner)$'
 ```
 
 ## Build and run
@@ -77,11 +77,10 @@ Deployment includes Qt's runtime libraries and QML plugins. No installer is prov
 ## What to try
 
 - Switch pages quickly; selections retarget without queuing navigation.
-- Add a sample folder, edit folder preferences, and take a simulated snapshot.
-- In Compare, choose two timeline moments, run the comparison, search/filter the tree,
-  and review Added items through the two-stage cleanup preview.
-- In Settings, use **Explore the preview** to inspect empty, missing-payload, warning,
-  failure, and large-comparison states.
+- Add an existing folder with **Add folder**, then take a metadata snapshot.
+- In Compare, choose two saved snapshots, run the comparison, and search/filter the
+  resulting change tree.
+- Edit descriptions and folder preferences from the history and settings views.
 - Use Tab/Shift+Tab, Space, and Enter to operate controls. Focus has a visible outline.
 - Turn on Reduced motion or turn off Background motion in Settings.
 - Resize from every edge, double-click empty title space, and maximize/restore.
@@ -94,12 +93,13 @@ Deployment includes Qt's runtime libraries and QML plugins. No installer is prov
 - `src/qml/navigation/`: stable sidebar and retained-page transition host.
 - `src/qml/effects/AmbientBackground.qml` and `resources/shaders/ambient.frag`:
   palette interpolation and the four-blob fragment shader.
-- `src/qml/preview/UiPreviewState.qml`: deterministic in-memory product scenarios.
-- `src/AppState.*`: navigation and motion preferences shared with C++ tests.
+- `src/qml/preview/UiPreviewState.qml`: QML-facing live `AppState` type retained for
+  the page contracts.
+- `src/AppState.*`: persisted configuration/history models and worker orchestration.
 - `src/WindowsWindowController.*`: native frame, hit testing, work-area sizing,
   corner clipping, and window exposure. Keep Win32 APIs out of QML.
 
-`Main.qml` owns an in-memory `UiPreviewState`. Child components receive it explicitly.
+`Main.qml` owns a live `UiPreviewState`/`AppState` instance. Child components receive it explicitly.
 `MotionPolicy` combines user preferences with window visibility and exposure. Four
 page instances are created once. During transitions all page input is disabled;
 only the final selected page becomes enabled. Hidden pages retain their state

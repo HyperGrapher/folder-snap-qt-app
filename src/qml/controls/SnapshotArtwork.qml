@@ -27,7 +27,7 @@ Item {
                         color: Theme.accent
                     }
                     LabelText {
-                        text: "PROJECTS"
+                        text: "FOLDERSNAP"
                         font.pixelSize: 9
                         font.letterSpacing: 1.3
                         color: "#d4e3de"
@@ -55,7 +55,7 @@ Item {
                 }
                 RowLayout {
                     LabelText {
-                        text: "8,426 files"
+                        text: "metadata only"
                         font.pixelSize: 10
                         color: "#b8cac4"
                     }
@@ -63,7 +63,7 @@ Item {
                         Layout.fillWidth: true
                     }
                     LabelText {
-                        text: "14:32"
+                        text: "local history"
                         font.pixelSize: 10
                         color: Theme.accent
                     }

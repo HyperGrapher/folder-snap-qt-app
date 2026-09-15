@@ -191,7 +191,7 @@ ScrollView {
                         text: "Data folder"
                         primary: false
                         glyph: "folder"
-                        onClicked: page.appState.toast = "Preview: data will live in LocalAppData/FolderSnap."
+                        onClicked: page.appState.toast = page.appState.dataDirectory
                     }
                     ActionButton {
                         animationsEnabled: page.motion.transitionsEnabled
@@ -199,7 +199,7 @@ ScrollView {
                         primary: false
                         quiet: true
                         glyph: "file"
-                        onClicked: page.appState.toast = "Preview: operational logs will be available here."
+                        onClicked: page.appState.toast = "FolderSnap records metadata locally; no log viewer is available yet."
                     }
                     Item {
                         Layout.fillWidth: true
@@ -211,37 +211,6 @@ ScrollView {
                         quiet: true
                         onClicked: Qt.quit()
                     }
-                }
-            }
-        }
-        Panel {
-            Layout.fillWidth: true
-            implicitHeight: 120
-            color: "#252734"
-            border.color: "#424354"
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 20
-                spacing: 10
-                RowLayout {
-                    LabelText {
-                        text: "Explore the preview"
-                        font.pixelSize: 15
-                        font.weight: Font.DemiBold
-                        Layout.fillWidth: true
-                    }
-                    SelectBox {
-                        objectName: "scenarioSelector"
-                        model: ["Sample library", "Empty library", "Missing snapshot", "Scan warning", "Scan failure", "Large comparison"]
-                        currentIndex: model.indexOf(page.appState.scenario)
-                        onActivated: page.appState.scenario = currentText
-                        implicitWidth: 190
-                    }
-                }
-                BodyText {
-                    text: "Try different states, then visit Folders or Compare. All preferences and actions in this preview reset when you close the app."
-                    Layout.fillWidth: true
-                    font.pixelSize: 11
                 }
             }
         }
@@ -257,7 +226,7 @@ ScrollView {
                 font.weight: Font.DemiBold
             }
             LabelText {
-                text: "0.1 · Interface preview"
+                text: "0.1 · Local metadata"
                 color: Theme.muted
                 font.pixelSize: 10
             }
