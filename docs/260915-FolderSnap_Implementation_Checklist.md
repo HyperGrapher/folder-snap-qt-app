@@ -89,20 +89,25 @@ Exit: a clean FolderSnap-branded foundation configures, builds, launches, and pa
 - [x] Add keyboard focus states, tab navigation, accessible names, scalable text, and color-independent statuses.
 - [x] Verify the normal and minimum layouts at 100% Windows scaling, maximization, rapid navigation, and motion pausing while hidden/minimized.
 - [x] Inspect representative screens and key overlays; retain only the overview verification screenshot.
-- [ ] Obtain user approval for the visual direction before connecting real functionality.
+- [x] Obtain user approval for the visual direction before connecting real functionality.
 
 Exit: every planned workflow can be reviewed visually using fake data, with no real file or system operations.
 
 ## Phase 2 — Domain contracts and safety primitives
 
-- [ ] Implement schema-v2 domain types, enums, typed errors, UUID handling, and UTC timestamp conversion.
-- [ ] Implement JSON encoding/decoding for config, index, snapshot headers, entries, warnings, schedules, and ignore configuration.
-- [ ] Add canonical fixtures covering every field, Unicode, zero values, fractional timestamps, warnings, and all schedule kinds.
-- [ ] Implement normalized watched-root and relative identity paths with Windows case-insensitive semantics.
-- [ ] Implement storage-ID validation, containment-checked joins, long-path handling, and data-directory self-protection.
-- [ ] Implement the ordered ignore matcher, negation handling, validation diagnostics, and test-path result.
+- [x] Implement schema-v2 domain types, enums, typed errors, UUID handling, and UTC timestamp conversion.
+- [x] Implement JSON encoding/decoding for config, index, snapshot headers, entries, warnings, schedules, and ignore configuration.
+- [x] Add canonical fixtures covering every field, Unicode, zero values, fractional timestamps, warnings, and all schedule kinds.
+- [x] Implement normalized watched-root and relative identity paths with Windows case-insensitive semantics.
+- [x] Implement storage-ID validation, lexical containment-checked joins, long-path normalization, and data-directory self-protection. Native long-path access and reparse checks belong to scanner/cleanup integration.
+- [x] Implement the ordered ignore matcher, negation handling, validation diagnostics, and test-path result.
 - [ ] Implement atomic same-directory replacement and corrupt-file backup helpers.
-- [ ] Add exhaustive unit tests for schema validation, path attacks, containment, and ignore behavior.
+- [x] Add unit tests for schema validation, precision/boundary cases, path attacks, containment, and ignore behavior.
+
+First backend milestone: the Qt-Core-only `folder_snap_core` library and three new
+test suites are implemented. See [core contracts](260915-Core_Data_Contracts.md).
+The UI remains on sample data. Atomic storage is the next step; phase 2 and Gate C
+remain open until the remaining durability work is implemented and tested.
 
 Exit: persistence values round-trip without semantic loss, and unsafe paths/identifiers are rejected before any filesystem mutation.
 
@@ -233,7 +238,7 @@ Exit: the complete product meets the guide's definition of done and is ready for
 ## Approval gates
 
 - [x] Gate A — User confirms the first dependency install and foundation build succeed.
-- [ ] Gate B — User approves the fake-data UI direction.
+- [x] Gate B — User approves the fake-data UI direction.
 - [ ] Gate C — Domain/storage contracts and safety primitives pass review and tests.
 - [ ] Gate D — Live snapshot and comparison workflows pass end-to-end testing.
 - [ ] Gate E — Export, cleanup, and Windows integration pass safety/release review.

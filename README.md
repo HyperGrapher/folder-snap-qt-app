@@ -2,7 +2,25 @@
 
 A Windows 10/11 FolderSnap interface foundation built with C++20 and Qt Quick. Four retained pages,
 custom controls, a native frameless window, and one GPU shader explore color and
-motion. Everything is local mock state. Closing the app resets it.
+motion. The UI still uses local mock state and resets when closed. The first backend
+milestone adds validated snapshot/configuration contracts, Windows path safety,
+and ordered exclusion rules independently of the UI.
+
+## Backend foundation
+
+`folder_snap_core` depends only on Qt Core, not QML. It provides schema-v2 JSON
+encoding/decoding, exact 64-bit metadata and nanosecond UTC timestamps, validated
+paths/IDs, and exclusion matching with protected application-data subtrees.
+See [core contracts](docs/260915-Core_Data_Contracts.md) for behavior and limits.
+
+This milestone does not scan folders, save configuration/history, or connect live
+data to the interface. Atomic storage and the scanner are the next steps.
+
+Run only the new core tests after building:
+
+```powershell
+ctest --test-dir build --output-on-failure -R '^(domain|paths|ignore)$'
+```
 
 ## Build and run
 

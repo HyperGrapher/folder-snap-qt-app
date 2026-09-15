@@ -28,6 +28,18 @@ find_package(ZLIB REQUIRED)
 qt_standard_project_setup(REQUIRES 6.11)
 include(CTest)
 
+add_library(folder_snap_core STATIC
+    src/domain/DomainError.h
+    src/domain/Configuration.h src/domain/Configuration.cpp
+    src/domain/JsonCodec.h src/domain/JsonCodec.cpp
+    src/domain/Snapshot.h src/domain/Snapshot.cpp
+    src/domain/Timestamp.h src/domain/Timestamp.cpp
+    src/paths/WindowsPaths.h src/paths/WindowsPaths.cpp
+    src/ignore/IgnoreMatcher.h src/ignore/IgnoreMatcher.cpp
+)
+target_include_directories(folder_snap_core PUBLIC src)
+target_link_libraries(folder_snap_core PUBLIC Qt6::Core)
+
 set(folder_snap_qml_files
     src/qml/Main.qml
     src/qml/Theme.qml
@@ -107,6 +119,7 @@ qt_add_executable(
 target_link_libraries(
     FolderSnap
     PRIVATE
+        folder_snap_core
         folder_snap_ui
         folder_snap_uiplugin
         Qt6::Concurrent
@@ -126,6 +139,14 @@ endif()
 
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS QuickTest Test)
+
+    foreach(core_test IN ITEMS paths ignore domain)
+        qt_add_executable(tst_${core_test} tests/tst_${core_test}.cpp)
+        target_link_libraries(tst_${core_test} PRIVATE folder_snap_core Qt6::Test)
+        target_compile_definitions(tst_${core_test} PRIVATE
+            FOLDERSNAP_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+        add_test(NAME ${core_test} COMMAND tst_${core_test})
+    endforeach()
 
     qt_add_executable(tst_appstate tests/tst_appstate.cpp)
     target_link_libraries(tst_appstate PRIVATE folder_snap_ui Qt6::Test)

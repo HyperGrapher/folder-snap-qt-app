@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 2,
+  "roots": [
+    {
+      "rootId": "22222222-2222-4222-8222-222222222220",
+      "displayName": "資料 0",
+      "path": "C:/Projects/資料0",
+      "normalizedPath": "c:/projects/資料0",
+      "archived": false,
+      "schedule": {
+        "kind": "manual"
+      },
+      "ignoreRules": [
+        "# project exclusions",
+        "build/",
+        "!build/keep.txt"
+      ],
+      "retention": 0,
+      "lastSnapshotUtc": "2026-09-15T10:00:02.987654321Z",
+      "lastScanError": ""
+    },
+    {
+      "rootId": "22222222-2222-4222-8222-222222222221",
+      "displayName": "資料 1",
+      "path": "C:/Projects/資料1",
+      "normalizedPath": "c:/projects/資料1",
+      "archived": false,
+      "schedule": {
+        "kind": "interval",
+        "intervalHours": 3,
+        "nextDueAtUtc": "2026-09-16T10:00:00.123456789Z"
+      },
+      "ignoreRules": [
+        "# project exclusions",
+        "build/",
+        "!build/keep.txt"
+      ],
+      "retention": 10,
+      "lastSnapshotUtc": "2026-09-15T10:00:02.987654321Z",
+      "lastScanError": ""
+    },
+    {
+      "rootId": "22222222-2222-4222-8222-222222222222",
+      "displayName": "資料 2",
+      "path": "C:/Projects/資料2",
+      "normalizedPath": "c:/projects/資料2",
+      "archived": false,
+      "schedule": {
+        "kind": "daily",
+        "hour": 0,
+        "minute": 0,
+        "nextDueAtUtc": "2026-09-16T10:00:00.123456789Z"
+      },
+      "ignoreRules": [
+        "# project exclusions",
+        "build/",
+        "!build/keep.txt"
+      ],
+      "retention": 25,
+      "lastSnapshotUtc": "2026-09-15T10:00:02.987654321Z",
+      "lastScanError": ""
+    },
+    {
+      "rootId": "22222222-2222-4222-8222-222222222223",
+      "displayName": "資料 3",
+      "path": "C:/Projects/資料3",
+      "normalizedPath": "c:/projects/資料3",
+      "archived": false,
+      "schedule": {
+        "kind": "weekly",
+        "hour": 23,
+        "minute": 59,
+        "weekday": 0,
+        "nextDueAtUtc": "2026-09-16T10:00:00.123456789Z"
+      },
+      "ignoreRules": [
+        "# project exclusions",
+        "build/",
+        "!build/keep.txt"
+      ],
+      "retention": 50,
+      "lastSnapshotUtc": "2026-09-15T10:00:02.987654321Z",
+      "lastScanError": ""
+    },
+    {
+      "rootId": "22222222-2222-4222-8222-222222222224",
+      "displayName": "資料 4",
+      "path": "C:/Projects/資料4",
+      "normalizedPath": "c:/projects/資料4",
+      "archived": true,
+      "schedule": {
+        "kind": "monthly",
+        "hour": 12,
+        "minute": 30,
+        "dayOfMonth": 31,
+        "nextDueAtUtc": "2026-09-16T10:00:00.123456789Z"
+      },
+      "ignoreRules": [
+        "# project exclusions",
+        "build/",
+        "!build/keep.txt"
+      ],
+      "retention": 100,
+      "lastSnapshotUtc": "2026-09-15T10:00:02.987654321Z",
+      "lastScanError": "Access denied"
+    }
+  ],
+  "defaultRetention": 50,
+  "defaultIgnoreRules": [
+    "node_modules/",
+    "build/",
+    ".git/"
+  ],
+  "launchAtStartup": true,
+  "notifyScheduledSuccess": true,
+  "closeToTray": false
+}
