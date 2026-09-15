@@ -1,0 +1,6 @@
+build/
+.vs/
+out/
+*.user
+
+FROM_OTHER_QT_APP/
