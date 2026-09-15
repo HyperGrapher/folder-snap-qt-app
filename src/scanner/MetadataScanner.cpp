@@ -116,6 +116,11 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
             result.error = "The watched folder does not exist or is not a directory.";
             return result;
         }
+        if (!rootInfo.isReadable())
+        {
+            result.error = "The watched folder cannot be read.";
+            return result;
+        }
 
         const IgnoreMatcher matcher(request.ignoreRules, request.protectedSubtree);
         result.snapshot.header.snapshotId = createId();
@@ -138,6 +143,12 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
             }
             const DirectoryWork directory = pending.takeLast();
             const QDir currentDirectory(directory.absolutePath);
+            if (!currentDirectory.isReadable())
+            {
+                addWarning(result.snapshot, directory.relativePath, WarningOperation::Enumerate,
+                           WarningCategory::AccessDenied, "The folder could not be read.");
+                continue;
+            }
             const QFileInfoList children = currentDirectory.entryInfoList(
                 QDir::NoDotAndDotDot | QDir::AllEntries | QDir::Hidden | QDir::System, QDir::Name);
             for (const QFileInfo &info : children)

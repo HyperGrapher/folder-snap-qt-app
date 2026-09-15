@@ -19,12 +19,14 @@
 struct ScanJobResult
 {
     foldersnap::SnapshotCommitResult commit;
+    QString rootId;
     QString error;
-    bool cancelled{false};
 };
 
 struct ComparisonJobResult
 {
+    QString beforeId;
+    QString afterId;
     QVariantList changes;
     int addedCount{0};
     int removedCount{0};
@@ -354,6 +356,7 @@ class AppState : public QObject
     void setComparing(bool comparing);
     [[nodiscard]] foldersnap::WatchedRoot *currentConfigurationRoot();
     [[nodiscard]] const foldersnap::WatchedRoot *currentConfigurationRoot() const;
+    [[nodiscard]] foldersnap::WatchedRoot *configurationRoot(const QString &rootId);
 
     Section m_selectedSection{Section::Overview};
     bool m_reducedMotion{false};

@@ -809,14 +809,13 @@ void AppState::takeSnapshot()
         [request, paths, retention](QPromise<ScanJobResult> &promise)
         {
             ScanJobResult result;
+            result.rootId = request.rootId;
             promise.setProgressRange(0, 100);
             const foldersnap::ScanResult scan = foldersnap::MetadataScanner::scan(
                 request, [&promise](int value) { promise.setProgressValue(value); },
                 [&promise]() { return promise.isCanceled(); });
             if (scan.cancelled || promise.isCanceled())
             {
-                result.cancelled = true;
-                promise.addResult(result);
                 return;
             }
             if (!scan.error.isEmpty())
@@ -860,7 +859,13 @@ void AppState::startComparison()
     const QString afterId = m_afterId;
     const foldersnap::StoragePaths paths = m_paths;
     m_comparisonWatcher->setFuture(QtConcurrent::run(
-        [paths, beforeId, afterId]() { return compareSnapshots(paths, beforeId, afterId); }));
+        [paths, beforeId, afterId]()
+        {
+            ComparisonJobResult result = compareSnapshots(paths, beforeId, afterId);
+            result.beforeId = beforeId;
+            result.afterId = afterId;
+            return result;
+        }));
 }
 
 void AppState::openSheet(const QString &kind)
@@ -1120,16 +1125,16 @@ void AppState::refreshModels()
 
 void AppState::finishScan()
 {
-    const ScanJobResult result = m_scanWatcher->result();
     setScanning(false);
-    if (result.cancelled)
+    if (m_scanWatcher->future().isCanceled())
     {
         setToast("Snapshot cancelled. Your folder was not changed.");
         return;
     }
+    const ScanJobResult result = m_scanWatcher->result();
     if (!result.error.isEmpty())
     {
-        if (auto *root = currentConfigurationRoot())
+        if (auto *root = configurationRoot(result.rootId))
         {
             root->lastScanError = result.error;
             saveConfiguration();
@@ -1139,7 +1144,7 @@ void AppState::finishScan()
     }
     m_scanProgress = 100;
     emit scanProgressChanged();
-    if (auto *root = currentConfigurationRoot())
+    if (auto *root = configurationRoot(result.rootId))
     {
         root->lastSnapshotUtc = result.commit.record.completedAtUtc;
         root->lastScanError.clear();
@@ -1155,6 +1160,10 @@ void AppState::finishComparison()
 {
     const ComparisonJobResult result = m_comparisonWatcher->result();
     setComparing(false);
+    if (result.beforeId != m_beforeId || result.afterId != m_afterId)
+    {
+        return;
+    }
     if (!result.error.isEmpty())
     {
         setScanError(result.error);
@@ -1242,4 +1251,16 @@ const foldersnap::WatchedRoot *AppState::currentConfigurationRoot() const
         return nullptr;
     }
     return &m_configuration.roots[m_rootIndex];
+}
+
+foldersnap::WatchedRoot *AppState::configurationRoot(const QString &rootId)
+{
+    for (foldersnap::WatchedRoot &root : m_configuration.roots)
+    {
+        if (root.rootId == rootId)
+        {
+            return &root;
+        }
+    }
+    return nullptr;
 }
