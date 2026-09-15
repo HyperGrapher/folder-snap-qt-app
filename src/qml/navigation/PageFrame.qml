@@ -1,5 +1,5 @@
 import QtQuick
-import Aura
+import FolderSnap
 
 FocusScope {
     id: frame

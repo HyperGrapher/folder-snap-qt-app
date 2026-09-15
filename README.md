@@ -1,6 +1,6 @@
-# Aura
+# FolderSnap
 
-A Windows 10/11 interface demo built with C++17 and Qt Quick. Four retained pages,
+A Windows 10/11 FolderSnap interface foundation built with C++20 and Qt Quick. Four retained pages,
 custom controls, a native frameless window, and one GPU shader explore color and
 motion. Everything is local mock state. Closing the app resets it.
 
@@ -15,14 +15,22 @@ From the project root in PowerShell:
 ```powershell
 $qtRoot = 'C:\Qt\6.11.1\mingw_64'
 $compilerRoot = 'C:\Qt\Tools\mingw1310_64'
+$vcpkgRoot = 'C:\Users\burak\vcpkg'
+$triplet = 'x64-mingw-dynamic'
 $env:PATH = "$compilerRoot\bin;$qtRoot\bin;$env:PATH"
 
+& "$vcpkgRoot\vcpkg.exe" install --triplet $triplet `
+    "--x-install-root=$PWD\build\vcpkg_installed"
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
     "-DCMAKE_PREFIX_PATH=$qtRoot" `
-    "-DCMAKE_CXX_COMPILER=$compilerRoot/bin/g++.exe" -DBUILD_TESTING=ON
+    "-DCMAKE_CXX_COMPILER=$compilerRoot\bin\g++.exe" `
+    "-DCMAKE_TOOLCHAIN_FILE=$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" `
+    "-DVCPKG_INSTALLED_DIR=$PWD\build\vcpkg_installed" `
+    "-DVCPKG_TARGET_TRIPLET=$triplet" `
+    -DFOLDERSNAP_INSTALL_DEPENDENCIES=OFF -DBUILD_TESTING=ON
 cmake --build build -j 4
 ctest --test-dir build --output-on-failure
-& .\build\appAura.exe
+& .\build\FolderSnap.exe
 ```
 
 Only `build/` is used for build products. A missing Vulkan-headers notice is not
@@ -35,10 +43,10 @@ Run after the build, in the same PowerShell environment:
 
 ```powershell
 New-Item -ItemType Directory -Force build/deploy | Out-Null
-Copy-Item build/appAura.exe build/deploy/appAura.exe
+Copy-Item build/FolderSnap.exe build/deploy/FolderSnap.exe
 & "$qtRoot/bin/windeployqt.exe" --release --compiler-runtime --no-translations `
-    --qmldir src/qml --dir build/deploy build/deploy/appAura.exe
-& .\build\deploy\appAura.exe
+    --qmldir src/qml --dir build/deploy build/deploy/FolderSnap.exe
+& .\build\deploy\FolderSnap.exe
 ```
 
 Keep the entire deployment folder together; the EXE alone is insufficient.
@@ -121,9 +129,9 @@ different Windows scaling settings.
 For four 60-second resource samples (longer than the ordinary CTest timeout):
 
 ```powershell
-$env:AURA_MEASURE = '1'
+$env:FOLDERSNAP_MEASURE = '1'
 & .\build\tst_window.exe performance
-Remove-Item Env:AURA_MEASURE
+Remove-Item Env:FOLDERSNAP_MEASURE
 ```
 
 Results are saved as `build/verification/scale-*/performance.json`. The harness

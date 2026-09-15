@@ -1,5 +1,5 @@
 import QtQuick
-import Aura
+import FolderSnap
 
 Rectangle {
     id: card

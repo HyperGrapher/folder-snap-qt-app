@@ -4,3 +4,4 @@ out/
 *.user
 
 FROM_OTHER_QT_APP/
+third_party/

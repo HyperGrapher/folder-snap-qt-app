@@ -1,5 +1,5 @@
 import QtQuick
-import Aura
+import FolderSnap
 
 Text {
     color: Theme.secondary

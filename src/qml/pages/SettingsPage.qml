@@ -1,5 +1,5 @@
 import QtQuick
-import Aura
+import FolderSnap
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -110,7 +110,7 @@ ScrollView {
                 }
                 BodyText {
                     Layout.fillWidth: true
-                    text: "Aura is an interactive interface demo. Everything you see is mock content, and every action stays inside this window. There are no accounts, connections, or changes to your system."
+                    text: "FolderSnap is currently an interface preview. Everything shown is mock content, and every action stays inside this window."
                 }
                 BodyText {
                     Layout.fillWidth: true

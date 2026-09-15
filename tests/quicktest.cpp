@@ -2,7 +2,7 @@
 #include <QQuickStyle>
 #include <QtQuickTest/quicktest.h>
 
-Q_IMPORT_QML_PLUGIN(AuraPlugin)
+Q_IMPORT_QML_PLUGIN(FolderSnapPlugin)
 class TestSetup final : public QObject
 {
     Q_OBJECT
@@ -12,5 +12,5 @@ class TestSetup final : public QObject
         QQuickStyle::setStyle("Basic");
     }
 };
-QUICK_TEST_MAIN_WITH_SETUP(aura, TestSetup)
+QUICK_TEST_MAIN_WITH_SETUP(foldersnap, TestSetup)
 #include "quicktest.moc"

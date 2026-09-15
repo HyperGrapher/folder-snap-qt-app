@@ -1,5 +1,5 @@
 import QtQuick
-import Aura
+import FolderSnap
 import QtQuick.Controls
 import QtQuick.Layouts
 

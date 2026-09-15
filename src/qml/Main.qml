@@ -1,5 +1,5 @@
 import QtQuick
-import Aura
+import FolderSnap
 
 Window {
     id: window
@@ -10,7 +10,7 @@ Window {
     minimumWidth: Math.min(860, Screen.desktopAvailableWidth)
     minimumHeight: Math.min(600, Screen.desktopAvailableHeight)
     visible: false
-    title: "Aura"
+    title: "FolderSnap"
     color: Theme.background
     flags: Qt.Window | Qt.FramelessWindowHint
     MotionPolicy {

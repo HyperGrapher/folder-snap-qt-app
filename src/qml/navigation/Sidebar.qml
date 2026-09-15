@@ -1,6 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Aura
+import FolderSnap
 import QtQuick.Layouts
 
 Rectangle {
@@ -42,11 +42,11 @@ Rectangle {
                     anchors.centerIn: parent
                     width: 23
                     height: 23
-                    source: "qrc:/resources/icons/spark.svg"
+                    source: "qrc:/resources/icons/foldersnap-icon.png"
                 }
             }
             Text {
-                text: "aura"
+                text: "FolderSnap"
                 color: Theme.text
                 font.family: Theme.fontFamily
                 font.pixelSize: 28

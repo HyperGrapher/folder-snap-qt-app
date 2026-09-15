@@ -27,7 +27,7 @@
 #include "AppState.h"
 #include "WindowsWindowController.h"
 
-Q_IMPORT_QML_PLUGIN(AuraPlugin)
+Q_IMPORT_QML_PLUGIN(FolderSnapPlugin)
 
 namespace
 {
@@ -159,7 +159,7 @@ class WindowTest final : public QObject
         QQuickStyle::setStyle("Basic");
         m_engine = std::make_unique<QQmlApplicationEngine>();
         m_engine->setInitialProperties({{"appState", QVariant::fromValue(&m_state)}});
-        m_engine->loadFromModule("Aura", "Main");
+        m_engine->loadFromModule("FolderSnap", "Main");
         QVERIFY(!m_engine->rootObjects().isEmpty());
         m_window = qobject_cast<QQuickWindow *>(m_engine->rootObjects().first());
         QVERIFY(m_window);
@@ -341,9 +341,9 @@ class WindowTest final : public QObject
     }
     void performance()
     {
-        if (!qEnvironmentVariableIsSet("AURA_MEASURE"))
+        if (!qEnvironmentVariableIsSet("FOLDERSNAP_MEASURE"))
         {
-            QSKIP("Set AURA_MEASURE=1 for four 60-second resource samples");
+            QSKIP("Set FOLDERSNAP_MEASURE=1 for four 60-second resource samples");
         }
         for (int index = 0; index < 4; ++index)
         {
@@ -353,7 +353,7 @@ class WindowTest final : public QObject
         m_state.setSelectedSection(AppState::Section::Overview);
         m_state.setReducedMotion(false);
         QJsonArray samples;
-        const QString scenario = qEnvironmentVariable("AURA_MEASURE_SCENARIO");
+        const QString scenario = qEnvironmentVariable("FOLDERSNAP_MEASURE_SCENARIO");
         if (scenario.isEmpty() || scenario == "ambient")
         {
             samples.append(measure("ambient", false));
@@ -376,7 +376,7 @@ class WindowTest final : public QObject
             QVERIFY(QTest::qWaitForWindowExposed(m_window));
             samples.append(measure("navigation-and-widgets", true));
         }
-        QVERIFY2(!samples.isEmpty(), "Unknown AURA_MEASURE_SCENARIO");
+        QVERIFY2(!samples.isEmpty(), "Unknown FOLDERSNAP_MEASURE_SCENARIO");
         QFile output(m_outputDirectory + "/performance" +
                      (scenario.isEmpty() ? QString{} : "-" + scenario) + ".json");
         QVERIFY(output.open(QIODevice::WriteOnly));

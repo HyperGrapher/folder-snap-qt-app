@@ -1,17 +1,20 @@
 #include "AppState.h"
 #include "WindowsWindowController.h"
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlExtensionPlugin>
 #include <QQuickStyle>
 #include <QQuickWindow>
 
-Q_IMPORT_QML_PLUGIN(AuraPlugin)
+Q_IMPORT_QML_PLUGIN(FolderSnapPlugin)
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
-    QGuiApplication::setApplicationName("Aura");
-    QGuiApplication::setOrganizationName("AuraDemo");
+    QGuiApplication::setApplicationName("FolderSnap");
+    QGuiApplication::setApplicationDisplayName("FolderSnap");
+    QGuiApplication::setOrganizationName("FolderSnap");
+    QGuiApplication::setWindowIcon(QIcon(":/resources/icons/foldersnap-icon.png"));
     QQuickStyle::setStyle("Basic");
     AppState appState;
     QQmlApplicationEngine engine;
@@ -19,7 +22,7 @@ int main(int argc, char *argv[])
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         []() { QCoreApplication::exit(1); }, Qt::QueuedConnection);
-    engine.loadFromModule("Aura", "Main");
+    engine.loadFromModule("FolderSnap", "Main");
     if (engine.rootObjects().isEmpty())
     {
         return 1;

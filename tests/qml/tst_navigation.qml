@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import Aura
+import FolderSnap
 
 TestCase {
     id: testCase
