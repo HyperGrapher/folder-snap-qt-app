@@ -158,7 +158,7 @@ Exit: equivalent scans produce deterministic snapshots without blocking the GUI 
 - [x] Build the expandable multi-level result tree with synthesized parents.
 - [x] Calculate recursive Before/After folder sizes from complete snapshots.
 - [x] Implement filter/search, folder-first presentation, effective-size ordering, and deterministic natural-name tie-breaking.
-- [ ] Add large mostly-unchanged fixture tests and all classification/scope/warning cases.
+- [x] Add large mostly-unchanged fixture tests and all classification/scope/warning cases.
 
 Exit: large comparisons remain responsive and return the documented classifications, summaries, and tree ordering.
 

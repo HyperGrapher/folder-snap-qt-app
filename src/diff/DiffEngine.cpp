@@ -125,10 +125,24 @@ DiffResult DiffEngine::compare(const Snapshot &first, const Snapshot &second,
             std::swap(before, after);
         }
 
-        QList<SnapshotEntry> beforeEntries = before->entries;
-        QList<SnapshotEntry> afterEntries = after->entries;
-        std::sort(beforeEntries.begin(), beforeEntries.end(), lessPath);
-        std::sort(afterEntries.begin(), afterEntries.end(), lessPath);
+        QList<SnapshotEntry> sortedBeforeEntries;
+        QList<SnapshotEntry> sortedAfterEntries;
+        const QList<SnapshotEntry> *beforeEntries = &before->entries;
+        const QList<SnapshotEntry> *afterEntries = &after->entries;
+        if (!before->entriesSorted ||
+            !std::is_sorted(before->entries.cbegin(), before->entries.cend(), lessPath))
+        {
+            sortedBeforeEntries = before->entries;
+            std::sort(sortedBeforeEntries.begin(), sortedBeforeEntries.end(), lessPath);
+            beforeEntries = &sortedBeforeEntries;
+        }
+        if (!after->entriesSorted ||
+            !std::is_sorted(after->entries.cbegin(), after->entries.cend(), lessPath))
+        {
+            sortedAfterEntries = after->entries;
+            std::sort(sortedAfterEntries.begin(), sortedAfterEntries.end(), lessPath);
+            afterEntries = &sortedAfterEntries;
+        }
         result.summary.beforeWarningCount = before->header.scanWarnings.size();
         result.summary.afterWarningCount = after->header.scanWarnings.size();
         result.summary.ignoreRulesDiffer =
@@ -136,37 +150,42 @@ DiffResult DiffEngine::compare(const Snapshot &first, const Snapshot &second,
 
         qsizetype beforeIndex = 0;
         qsizetype afterIndex = 0;
-        while (beforeIndex < beforeEntries.size() || afterIndex < afterEntries.size())
+        while (beforeIndex < beforeEntries->size() || afterIndex < afterEntries->size())
         {
             checkCancelled(cancelled);
-            const bool hasBefore = beforeIndex < beforeEntries.size();
-            const bool hasAfter = afterIndex < afterEntries.size();
-            const QString path = !hasBefore
-                                      ? afterEntries[afterIndex].path
-                                      : !hasAfter ? beforeEntries[beforeIndex].path
-                                                  : std::min(beforeEntries[beforeIndex].path,
-                                                             afterEntries[afterIndex].path);
+            const bool hasBefore = beforeIndex < beforeEntries->size();
+            const bool hasAfter = afterIndex < afterEntries->size();
+            const QString path = !hasBefore  ? afterEntries->at(afterIndex).path
+                                 : !hasAfter ? beforeEntries->at(beforeIndex).path
+                                             : std::min(beforeEntries->at(beforeIndex).path,
+                                                        afterEntries->at(afterIndex).path);
             const bool samePath = hasBefore && hasAfter &&
-                                  beforeEntries[beforeIndex].path == path &&
-                                  afterEntries[afterIndex].path == path;
+                                  beforeEntries->at(beforeIndex).path == path &&
+                                  afterEntries->at(afterIndex).path == path;
 
             DiffEntry entry;
             entry.path = path;
             if (samePath)
             {
-                entry.before = beforeEntries[beforeIndex++];
-                entry.after = afterEntries[afterIndex++];
+                entry.before = beforeEntries->at(beforeIndex++);
+                entry.after = afterEntries->at(afterIndex++);
                 entry.kind = sameMetadata(*entry.before, *entry.after) ? ChangeKind::Unchanged
-                                                                         : ChangeKind::Modified;
+                                                                       : ChangeKind::Modified;
+                if (entry.kind == ChangeKind::Modified)
+                {
+                    entry.modification = entry.before->type == entry.after->type
+                                             ? ModificationKind::Metadata
+                                             : ModificationKind::TypeChanged;
+                }
             }
-            else if (hasBefore && beforeEntries[beforeIndex].path == path)
+            else if (hasBefore && beforeEntries->at(beforeIndex).path == path)
             {
-                entry.before = beforeEntries[beforeIndex++];
+                entry.before = beforeEntries->at(beforeIndex++);
                 entry.kind = classifyMissing(*entry.before, after->header, false);
             }
             else
             {
-                entry.after = afterEntries[afterIndex++];
+                entry.after = afterEntries->at(afterIndex++);
                 entry.kind = classifyMissing(*entry.after, before->header, true);
             }
 

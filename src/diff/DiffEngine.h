@@ -20,10 +20,18 @@ enum class ChangeKind
     ScopeDifference
 };
 
+enum class ModificationKind
+{
+    None,
+    Metadata,
+    TypeChanged
+};
+
 struct DiffEntry
 {
     QString path;
     ChangeKind kind{ChangeKind::Unchanged};
+    ModificationKind modification{ModificationKind::None};
     std::optional<SnapshotEntry> before;
     std::optional<SnapshotEntry> after;
 };

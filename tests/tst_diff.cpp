@@ -35,6 +35,19 @@ foldersnap::SnapshotEntry file(const QString &path, qint64 size, qint64 modified
     entry.modifiedNs = modified;
     return entry;
 }
+
+foldersnap::SnapshotEntry entry(const QString &path, foldersnap::EntryType type, qint64 modified,
+                                quint32 attributes = 0, const QString &linkTarget = {})
+{
+    foldersnap::SnapshotEntry result;
+    result.path = path;
+    result.displayPath = path;
+    result.type = type;
+    result.modifiedNs = modified;
+    result.attributes = attributes;
+    result.linkTarget = linkTarget;
+    return result;
+}
 } // namespace
 
 class DiffTest final : public QObject
@@ -143,6 +156,77 @@ class DiffTest final : public QObject
         const foldersnap::DiffResult diff = foldersnap::DiffEngine::compare(before, after);
 
         QVERIFY(foldersnap::buildComparisonTree(before, after, diff).isEmpty());
+    }
+
+    void appliesTypeSpecificMetadataRules()
+    {
+        auto beforeFile = file("file.txt", 10, 4);
+        beforeFile.createdNs = 1;
+        beforeFile.attributes = 1;
+        auto afterFile = beforeFile;
+        afterFile.createdNs = 99;
+        afterFile.attributes = 99;
+
+        const foldersnap::Snapshot before =
+            makeSnapshot("11111111-1111-4111-8111-111111111111", 10,
+                         {beforeFile, entry("folder", foldersnap::EntryType::Directory, 1, 1),
+                          entry("link", foldersnap::EntryType::Reparse, 1, 1, "target-a"),
+                          entry("other", foldersnap::EntryType::Other, 1, 1), file("type", 1, 1)});
+        const foldersnap::Snapshot after =
+            makeSnapshot("22222222-2222-4222-8222-222222222222", 20,
+                         {afterFile, entry("folder", foldersnap::EntryType::Directory, 99, 99),
+                          entry("link", foldersnap::EntryType::Reparse, 1, 1, "target-b"),
+                          entry("other", foldersnap::EntryType::Other, 1, 2),
+                          entry("type", foldersnap::EntryType::Directory, 1)});
+
+        const foldersnap::DiffResult result = foldersnap::DiffEngine::compare(before, after);
+        QCOMPARE(result.summary.unchangedCount, qint64(2));
+        QCOMPARE(result.summary.modifiedCount, qint64(3));
+        QCOMPARE(result.entries.last().modification, foldersnap::ModificationKind::TypeChanged);
+    }
+
+    void classifiesScopeDifferencesAndWarningPrecedence()
+    {
+        foldersnap::Snapshot before =
+            makeSnapshot("11111111-1111-4111-8111-111111111111", 10, {}, {"ignored/"});
+        const foldersnap::Snapshot after = makeSnapshot("22222222-2222-4222-8222-222222222222", 20,
+                                                        {file("ignored/new.txt", 2, 1)});
+
+        foldersnap::DiffResult result = foldersnap::DiffEngine::compare(before, after);
+        QCOMPARE(result.summary.scopeDifferenceCount, qint64(1));
+        QCOMPARE(result.summary.addedCount, qint64(0));
+        QVERIFY(result.summary.ignoreRulesDiffer);
+
+        before.header.scanWarnings.append({"ignored", foldersnap::WarningOperation::Enumerate,
+                                           foldersnap::WarningCategory::Io, "partial"});
+        result = foldersnap::DiffEngine::compare(before, after);
+        QCOMPARE(result.summary.uncertainCount, qint64(1));
+        QCOMPARE(result.summary.scopeDifferenceCount, qint64(0));
+    }
+
+    void comparesLargeMostlyUnchangedSnapshots()
+    {
+        constexpr int kEntryCount = 100001;
+        QList<foldersnap::SnapshotEntry> beforeEntries;
+        beforeEntries.reserve(kEntryCount);
+        for (int index = 0; index < kEntryCount; ++index)
+        {
+            beforeEntries.append(
+                file(QString("bulk/file%1.bin").arg(index, 6, 10, QChar('0')), index + 1, 1));
+        }
+        QList<foldersnap::SnapshotEntry> afterEntries = beforeEntries;
+        afterEntries.last().size += 10;
+        afterEntries.last().modifiedNs = 2;
+        const foldersnap::Snapshot before =
+            makeSnapshot("11111111-1111-4111-8111-111111111111", 10, beforeEntries);
+        const foldersnap::Snapshot after =
+            makeSnapshot("22222222-2222-4222-8222-222222222222", 20, afterEntries);
+
+        const foldersnap::DiffResult result = foldersnap::DiffEngine::compare(before, after);
+        QCOMPARE(result.summary.comparedCount, qint64(kEntryCount));
+        QCOMPARE(result.summary.unchangedCount, qint64(kEntryCount - 1));
+        QCOMPARE(result.summary.modifiedCount, qint64(1));
+        QCOMPARE(result.entries.size(), 1);
     }
 };
 

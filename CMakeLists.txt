@@ -44,6 +44,7 @@ add_library(folder_snap_core STATIC
     src/storage/SnapshotStore.h src/storage/SnapshotStore.cpp
     src/storage/HistoryStore.h src/storage/HistoryStore.cpp
     src/scanner/MetadataScanner.h src/scanner/MetadataScanner.cpp
+    src/schedule/ScheduleCalculator.h src/schedule/ScheduleCalculator.cpp
 )
 target_include_directories(folder_snap_core PUBLIC src)
 target_link_libraries(folder_snap_core PUBLIC Qt6::Core ZLIB::ZLIB)
@@ -148,7 +149,7 @@ endif()
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS QuickTest Test)
 
-    foreach(core_test IN ITEMS paths ignore domain storage scanner diff)
+    foreach(core_test IN ITEMS paths ignore domain storage scanner diff schedule)
         qt_add_executable(tst_${core_test} tests/tst_${core_test}.cpp)
         target_link_libraries(tst_${core_test} PRIVATE folder_snap_core Qt6::Test)
         target_compile_definitions(tst_${core_test} PRIVATE
