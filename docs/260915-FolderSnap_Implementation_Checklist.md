@@ -151,9 +151,9 @@ Exit: equivalent scans produce deterministic snapshots without blocking the GUI 
 
 ## Phase 5 — Diff engine and comparison projection
 
-- [ ] Implement chronological validation and a linear merge over path-sorted snapshot entries.
-- [ ] Implement Added, Removed, Modified, Unchanged, Uncertain, and Scope Difference classifications exactly as documented.
-- [ ] Calculate counts and byte summaries without retaining unchanged entries.
+- [x] Implement chronological validation and a linear merge over path-sorted snapshot entries.
+- [x] Implement Added, Removed, Modified, Unchanged, Uncertain, and Scope Difference classifications exactly as documented.
+- [x] Calculate counts and byte summaries without retaining unchanged entries.
 - [ ] Implement cancellation and stale-result protection for the single active comparison.
 - [ ] Build the expandable multi-level result tree with synthesized parents.
 - [ ] Calculate recursive Before/After folder sizes from complete snapshots.

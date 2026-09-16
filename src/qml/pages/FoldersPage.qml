@@ -40,7 +40,7 @@ ColumnLayout {
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
-                spacing: 10
+                spacing: 8
                 LabelText {
                     text: "FOLDERS  /  " + page.appState.visibleRoots.length
                     font.pixelSize: 9
@@ -55,7 +55,7 @@ ColumnLayout {
                         required property int index
                         required property var modelData
                         Layout.fillWidth: true
-                        implicitHeight: 84
+                        implicitHeight: 64
                         hoverEnabled: true
                         Accessible.name: "Select " + modelData.name
                         onClicked: page.appState.chooseRoot(index)
@@ -65,7 +65,7 @@ ColumnLayout {
                             border.color: folderItem.visualFocus ? Theme.accent : page.appState.rootIndex === folderItem.index ? "#486053" : "transparent"
                         }
                         contentItem: ColumnLayout {
-                            spacing: 8
+                            spacing: 4
                             RowLayout {
                                 Glyph {
                                     name: folderItem.modelData.archived ? "archive" : "folder"
@@ -196,11 +196,11 @@ ColumnLayout {
                     Panel {
                         required property var modelData
                         Layout.fillWidth: true
-                        implicitHeight: 87
+                        implicitHeight: 72
                         RowLayout {
                             anchors.fill: parent
-                            anchors.margins: 14
-                            spacing: 13
+                            anchors.margins: 12
+                            spacing: 10
                             Rectangle {
                                 width: 34
                                 height: 34
@@ -215,7 +215,7 @@ ColumnLayout {
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 6
+                                spacing: 3
                                 RowLayout {
                                     LabelText {
                                         text: modelData.date
