@@ -154,7 +154,7 @@ Exit: equivalent scans produce deterministic snapshots without blocking the GUI 
 - [x] Implement chronological validation and a linear merge over path-sorted snapshot entries.
 - [x] Implement Added, Removed, Modified, Unchanged, Uncertain, and Scope Difference classifications exactly as documented.
 - [x] Calculate counts and byte summaries without retaining unchanged entries.
-- [ ] Implement cancellation and stale-result protection for the single active comparison.
+- [x] Implement cancellation and stale-result protection for the single active comparison.
 - [ ] Build the expandable multi-level result tree with synthesized parents.
 - [ ] Calculate recursive Before/After folder sizes from complete snapshots.
 - [ ] Implement filter/search, folder-first presentation, effective-size ordering, and deterministic natural-name tie-breaking.

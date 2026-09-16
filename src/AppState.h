@@ -27,6 +27,7 @@ struct ComparisonJobResult
 {
     QString beforeId;
     QString afterId;
+    quint64 generation{0};
     QVariantList changes;
     int addedCount{0};
     int removedCount{0};
@@ -36,6 +37,7 @@ struct ComparisonJobResult
     int comparedCount{0};
     qint64 netSize{0};
     QString error;
+    bool cancelled{false};
 };
 
 class AppState : public QObject
@@ -350,6 +352,7 @@ class AppState : public QObject
     void refreshModels();
     void finishScan();
     void finishComparison();
+    void invalidateComparison();
     void saveConfiguration();
     void setScanError(const QString &error);
     void setScanning(bool scanning);
@@ -374,6 +377,7 @@ class AppState : public QObject
     int m_scanProgress{0};
     QString m_scanError;
     bool m_comparing{false};
+    quint64 m_comparisonGeneration{0};
     bool m_comparisonReady{false};
     QVariantList m_changes;
     QStringList m_expanded;

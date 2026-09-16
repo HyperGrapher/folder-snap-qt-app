@@ -246,21 +246,38 @@ QString changeStatus(foldersnap::ChangeKind kind)
 }
 
 ComparisonJobResult compareSnapshots(const foldersnap::StoragePaths &paths, const QString &beforeId,
-                                     const QString &afterId)
+                                     const QString &afterId,
+                                     const foldersnap::DiffEngine::CancellationCallback &cancelled)
 {
     ComparisonJobResult result;
     try
     {
         const foldersnap::SnapshotStore store(paths);
         const Snapshot before = store.loadSnapshot(beforeId);
+        if (cancelled())
+        {
+            result.cancelled = true;
+            return result;
+        }
         const Snapshot after = store.loadSnapshot(afterId);
+        if (cancelled())
+        {
+            result.cancelled = true;
+            return result;
+        }
         if (before.header.rootId != after.header.rootId)
         {
             result.error = "Snapshots from different folders cannot be compared.";
             return result;
         }
 
-        const foldersnap::DiffResult diff = foldersnap::DiffEngine::compare(before, after);
+        const foldersnap::DiffResult diff =
+            foldersnap::DiffEngine::compare(before, after, cancelled);
+        if (diff.cancelled)
+        {
+            result.cancelled = true;
+            return result;
+        }
         QHash<QString, SnapshotEntry> beforeEntries;
         QHash<QString, SnapshotEntry> afterEntries;
         for (const SnapshotEntry &entry : before.entries)
@@ -296,8 +313,7 @@ ComparisonJobResult compareSnapshots(const foldersnap::StoragePaths &paths, cons
                 parent = parent.left(parent.lastIndexOf('/'));
                 const auto beforeIt = beforeEntries.constFind(parent);
                 const auto afterIt = afterEntries.constFind(parent);
-                if ((beforeIt != beforeEntries.cend() &&
-                     beforeIt->type == EntryType::Directory) ||
+                if ((beforeIt != beforeEntries.cend() && beforeIt->type == EntryType::Directory) ||
                     (afterIt != afterEntries.cend() && afterIt->type == EntryType::Directory))
                 {
                     folderPaths.insert(parent);
@@ -313,9 +329,9 @@ ComparisonJobResult compareSnapshots(const foldersnap::StoragePaths &paths, cons
         result.removedCount = static_cast<int>(diff.summary.removedCount);
         result.modifiedCount = static_cast<int>(diff.summary.modifiedCount);
         result.unchangedCount = static_cast<int>(diff.summary.unchangedCount);
-        result.warningCount = diff.summary.beforeWarningCount + diff.summary.afterWarningCount +
-                              static_cast<int>(diff.summary.uncertainCount +
-                                               diff.summary.scopeDifferenceCount);
+        result.warningCount =
+            diff.summary.beforeWarningCount + diff.summary.afterWarningCount +
+            static_cast<int>(diff.summary.uncertainCount + diff.summary.scopeDifferenceCount);
         result.comparedCount = static_cast<int>(diff.summary.comparedCount);
         result.netSize = diff.summary.netFileBytes;
 
@@ -335,9 +351,9 @@ ComparisonJobResult compareSnapshots(const foldersnap::StoragePaths &paths, cons
             row["name"] = path.section('/', -1);
             row["depth"] = path.count('/');
             row["folder"] = folder;
-            row["status"] = folder && !statuses.value(path).isEmpty()
-                                 ? statuses.value(path)
-                                 : folder ? "" : statuses.value(path);
+            row["status"] = folder && !statuses.value(path).isEmpty() ? statuses.value(path)
+                            : folder                                  ? ""
+                                                                      : statuses.value(path);
             row["before"] = entrySize(left, beforeSizes, path);
             row["after"] = entrySize(right, afterSizes, path);
             result.changes.append(row);
@@ -750,6 +766,7 @@ void AppState::chooseSnapshot(const QString &snapshotId)
             std::swap(m_beforeId, m_afterId);
         }
     }
+    invalidateComparison();
     m_comparisonReady = false;
     m_changes.clear();
     m_expanded.clear();
@@ -765,6 +782,7 @@ void AppState::clearSnapshotPair()
         m_afterId.clear();
         emit snapshotPairChanged();
     }
+    invalidateComparison();
     m_comparisonReady = false;
     m_changes.clear();
     emit comparisonChanged();
@@ -858,6 +876,7 @@ void AppState::startComparison()
     {
         return;
     }
+    const quint64 generation = ++m_comparisonGeneration;
     setComparing(true);
     m_comparisonReady = false;
     emit comparisonChanged();
@@ -865,12 +884,17 @@ void AppState::startComparison()
     const QString afterId = m_afterId;
     const foldersnap::StoragePaths paths = m_paths;
     m_comparisonWatcher->setFuture(QtConcurrent::run(
-        [paths, beforeId, afterId]()
+        [paths, beforeId, afterId, generation](QPromise<ComparisonJobResult> &promise)
         {
-            ComparisonJobResult result = compareSnapshots(paths, beforeId, afterId);
+            ComparisonJobResult result = compareSnapshots(paths, beforeId, afterId, [&promise]()
+                                                          { return promise.isCanceled(); });
             result.beforeId = beforeId;
             result.afterId = afterId;
-            return result;
+            result.generation = generation;
+            if (!result.cancelled && !promise.isCanceled())
+            {
+                promise.addResult(result);
+            }
         }));
 }
 
@@ -1164,12 +1188,17 @@ void AppState::finishScan()
 
 void AppState::finishComparison()
 {
-    const ComparisonJobResult result = m_comparisonWatcher->result();
-    setComparing(false);
-    if (result.beforeId != m_beforeId || result.afterId != m_afterId)
+    if (m_comparisonWatcher->future().isCanceled())
     {
         return;
     }
+    const ComparisonJobResult result = m_comparisonWatcher->result();
+    if (result.generation != m_comparisonGeneration || result.beforeId != m_beforeId ||
+        result.afterId != m_afterId)
+    {
+        return;
+    }
+    setComparing(false);
     if (!result.error.isEmpty())
     {
         setScanError(result.error);
@@ -1196,6 +1225,16 @@ void AppState::finishComparison()
     }
     m_comparisonReady = true;
     emit comparisonChanged();
+}
+
+void AppState::invalidateComparison()
+{
+    ++m_comparisonGeneration;
+    if (m_comparisonWatcher && m_comparisonWatcher->isRunning())
+    {
+        m_comparisonWatcher->cancel();
+    }
+    setComparing(false);
 }
 
 void AppState::saveConfiguration()
