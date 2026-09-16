@@ -8,7 +8,6 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileInfo>
-#include <QHash>
 #include <QLocale>
 #include <QPromise>
 #include <QSet>
@@ -16,6 +15,7 @@
 #include <QUrl>
 #include <QtConcurrent>
 
+#include "diff/ComparisonTree.h"
 #include "diff/DiffEngine.h"
 #include "domain/DomainError.h"
 #include "storage/ConfigurationStore.h"
@@ -24,10 +24,8 @@
 
 namespace
 {
-using foldersnap::EntryType;
 using foldersnap::HistoryRecord;
 using foldersnap::Snapshot;
-using foldersnap::SnapshotEntry;
 using foldersnap::UtcTimestamp;
 
 QString formatCount(qint64 value)
@@ -187,44 +185,6 @@ QVariantMap mapForRoot(const foldersnap::WatchedRoot &root, const QList<HistoryR
     return result;
 }
 
-QHash<QString, qint64> recursiveSizes(const Snapshot &snapshot)
-{
-    QHash<QString, qint64> sizes;
-    for (const SnapshotEntry &entry : snapshot.entries)
-    {
-        if (entry.type != EntryType::File)
-        {
-            continue;
-        }
-        sizes[entry.path] += entry.size;
-        QString parent = entry.path;
-        while (parent.contains('/'))
-        {
-            parent = parent.left(parent.lastIndexOf('/'));
-            sizes[parent] += entry.size;
-        }
-    }
-    return sizes;
-}
-
-QString entrySize(const SnapshotEntry *entry, const QHash<QString, qint64> &sizes,
-                  const QString &path)
-{
-    if (!entry)
-    {
-        return "—";
-    }
-    if (entry->type == EntryType::File)
-    {
-        return formatBytes(entry->size);
-    }
-    if (entry->type == EntryType::Directory)
-    {
-        return formatBytes(sizes.value(path));
-    }
-    return "—";
-}
-
 QString changeStatus(foldersnap::ChangeKind kind)
 {
     switch (kind)
@@ -278,53 +238,6 @@ ComparisonJobResult compareSnapshots(const foldersnap::StoragePaths &paths, cons
             result.cancelled = true;
             return result;
         }
-        QHash<QString, SnapshotEntry> beforeEntries;
-        QHash<QString, SnapshotEntry> afterEntries;
-        for (const SnapshotEntry &entry : before.entries)
-        {
-            beforeEntries.insert(entry.path, entry);
-        }
-        for (const SnapshotEntry &entry : after.entries)
-        {
-            afterEntries.insert(entry.path, entry);
-        }
-        const auto beforeSizes = recursiveSizes(before);
-        const auto afterSizes = recursiveSizes(after);
-        QSet<QString> changedPaths;
-        QSet<QString> folderPaths;
-        QHash<QString, QString> statuses;
-
-        for (const foldersnap::DiffEntry &entry : diff.entries)
-        {
-            changedPaths.insert(entry.path);
-            statuses.insert(entry.path, changeStatus(entry.kind));
-            if ((entry.before && entry.before->type == EntryType::Directory) ||
-                (entry.after && entry.after->type == EntryType::Directory))
-            {
-                folderPaths.insert(entry.path);
-            }
-        }
-
-        for (const QString &path : std::as_const(changedPaths))
-        {
-            QString parent = path;
-            while (parent.contains('/'))
-            {
-                parent = parent.left(parent.lastIndexOf('/'));
-                const auto beforeIt = beforeEntries.constFind(parent);
-                const auto afterIt = afterEntries.constFind(parent);
-                if ((beforeIt != beforeEntries.cend() && beforeIt->type == EntryType::Directory) ||
-                    (afterIt != afterEntries.cend() && afterIt->type == EntryType::Directory))
-                {
-                    folderPaths.insert(parent);
-                }
-            }
-        }
-        for (const QString &path : folderPaths)
-        {
-            changedPaths.insert(path);
-        }
-
         result.addedCount = static_cast<int>(diff.summary.addedCount);
         result.removedCount = static_cast<int>(diff.summary.removedCount);
         result.modifiedCount = static_cast<int>(diff.summary.modifiedCount);
@@ -335,27 +248,18 @@ ComparisonJobResult compareSnapshots(const foldersnap::StoragePaths &paths, cons
         result.comparedCount = static_cast<int>(diff.summary.comparedCount);
         result.netSize = diff.summary.netFileBytes;
 
-        QStringList rows = changedPaths.values();
-        std::sort(rows.begin(), rows.end());
-        for (const QString &path : rows)
+        const QList<foldersnap::ComparisonTreeRow> rows =
+            foldersnap::buildComparisonTree(before, after, diff);
+        for (const foldersnap::ComparisonTreeRow &treeRow : rows)
         {
-            const auto beforeIt = beforeEntries.constFind(path);
-            const auto afterIt = afterEntries.constFind(path);
-            const SnapshotEntry *left =
-                beforeIt == beforeEntries.cend() ? nullptr : &beforeIt.value();
-            const SnapshotEntry *right =
-                afterIt == afterEntries.cend() ? nullptr : &afterIt.value();
-            const bool folder = folderPaths.contains(path);
             QVariantMap row;
-            row["path"] = path;
-            row["name"] = path.section('/', -1);
-            row["depth"] = path.count('/');
-            row["folder"] = folder;
-            row["status"] = folder && !statuses.value(path).isEmpty() ? statuses.value(path)
-                            : folder                                  ? ""
-                                                                      : statuses.value(path);
-            row["before"] = entrySize(left, beforeSizes, path);
-            row["after"] = entrySize(right, afterSizes, path);
+            row["path"] = treeRow.path;
+            row["name"] = treeRow.name;
+            row["depth"] = treeRow.depth;
+            row["folder"] = treeRow.folder;
+            row["status"] = treeRow.change ? changeStatus(*treeRow.change) : QString{};
+            row["before"] = treeRow.hasBeforeSize ? formatBytes(treeRow.beforeBytes) : QString("—");
+            row["after"] = treeRow.hasAfterSize ? formatBytes(treeRow.afterBytes) : QString("—");
             result.changes.append(row);
         }
     }

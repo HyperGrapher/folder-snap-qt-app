@@ -155,9 +155,9 @@ Exit: equivalent scans produce deterministic snapshots without blocking the GUI 
 - [x] Implement Added, Removed, Modified, Unchanged, Uncertain, and Scope Difference classifications exactly as documented.
 - [x] Calculate counts and byte summaries without retaining unchanged entries.
 - [x] Implement cancellation and stale-result protection for the single active comparison.
-- [ ] Build the expandable multi-level result tree with synthesized parents.
-- [ ] Calculate recursive Before/After folder sizes from complete snapshots.
-- [ ] Implement filter/search, folder-first presentation, effective-size ordering, and deterministic natural-name tie-breaking.
+- [x] Build the expandable multi-level result tree with synthesized parents.
+- [x] Calculate recursive Before/After folder sizes from complete snapshots.
+- [x] Implement filter/search, folder-first presentation, effective-size ordering, and deterministic natural-name tie-breaking.
 - [ ] Add large mostly-unchanged fixture tests and all classification/scope/warning cases.
 
 Exit: large comparisons remain responsive and return the documented classifications, summaries, and tree ordering.

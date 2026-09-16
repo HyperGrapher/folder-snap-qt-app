@@ -37,6 +37,7 @@ add_library(folder_snap_core STATIC
     src/paths/WindowsPaths.h src/paths/WindowsPaths.cpp
     src/ignore/IgnoreMatcher.h src/ignore/IgnoreMatcher.cpp
     src/diff/DiffEngine.h src/diff/DiffEngine.cpp
+    src/diff/ComparisonTree.h src/diff/ComparisonTree.cpp
     src/storage/AtomicFile.h src/storage/AtomicFile.cpp
     src/storage/ConfigurationStore.h src/storage/ConfigurationStore.cpp
     src/storage/StoragePaths.h src/storage/StoragePaths.cpp

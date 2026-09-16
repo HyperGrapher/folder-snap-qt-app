@@ -1,5 +1,6 @@
 #include <QTest>
 
+#include "diff/ComparisonTree.h"
 #include "diff/DiffEngine.h"
 
 namespace
@@ -17,7 +18,8 @@ foldersnap::Snapshot makeSnapshot(const QString &id, qint64 completedNs,
     snapshot.header.totalFileBytes = 0;
     for (const foldersnap::SnapshotEntry &entry : entries)
     {
-        snapshot.header.totalFileBytes += entry.type == foldersnap::EntryType::File ? entry.size : 0;
+        snapshot.header.totalFileBytes +=
+            entry.type == foldersnap::EntryType::File ? entry.size : 0;
     }
     snapshot.entries = entries;
     return snapshot;
@@ -48,9 +50,8 @@ class DiffTest final : public QObject
         auto modified = file("file2.txt", 5, 2);
         auto same = file("same.txt", 3, 1);
         same.createdNs = 99;
-        foldersnap::Snapshot after = makeSnapshot(
-            "22222222-2222-4222-8222-222222222222", 20,
-            {modified, same, file("file10.txt", 10, 1)});
+        foldersnap::Snapshot after = makeSnapshot("22222222-2222-4222-8222-222222222222", 20,
+                                                  {modified, same, file("file10.txt", 10, 1)});
 
         const foldersnap::DiffResult result = foldersnap::DiffEngine::compare(before, after);
         QCOMPARE(result.summary.addedCount, qint64(1));
@@ -68,10 +69,10 @@ class DiffTest final : public QObject
 
     void swapsReverseChronologicalInputs()
     {
-        const foldersnap::Snapshot older = makeSnapshot(
-            "11111111-1111-4111-8111-111111111111", 10, {file("old.txt", 1, 1)});
-        const foldersnap::Snapshot newer = makeSnapshot(
-            "22222222-2222-4222-8222-222222222222", 20, {file("new.txt", 2, 1)});
+        const foldersnap::Snapshot older =
+            makeSnapshot("11111111-1111-4111-8111-111111111111", 10, {file("old.txt", 1, 1)});
+        const foldersnap::Snapshot newer =
+            makeSnapshot("22222222-2222-4222-8222-222222222222", 20, {file("new.txt", 2, 1)});
         const foldersnap::DiffResult result = foldersnap::DiffEngine::compare(newer, older);
 
         QCOMPARE(result.summary.addedCount, qint64(1));
@@ -81,10 +82,9 @@ class DiffTest final : public QObject
 
     void warningMakesMissingEntryUncertain()
     {
-        const foldersnap::Snapshot before = makeSnapshot(
-            "11111111-1111-4111-8111-111111111111", 10, {file("folder/file.txt", 2, 1)});
-        foldersnap::Snapshot after = makeSnapshot(
-            "22222222-2222-4222-8222-222222222222", 20, {});
+        const foldersnap::Snapshot before = makeSnapshot("11111111-1111-4111-8111-111111111111", 10,
+                                                         {file("folder/file.txt", 2, 1)});
+        foldersnap::Snapshot after = makeSnapshot("22222222-2222-4222-8222-222222222222", 20, {});
         after.header.scanWarnings.append({"folder", foldersnap::WarningOperation::Enumerate,
                                           foldersnap::WarningCategory::AccessDenied, "denied"});
 
@@ -95,16 +95,54 @@ class DiffTest final : public QObject
 
     void cancellationReturnsAnIncompleteResult()
     {
-        const foldersnap::Snapshot before = makeSnapshot(
-            "11111111-1111-4111-8111-111111111111", 10, {file("a.txt", 1, 1)});
-        const foldersnap::Snapshot after = makeSnapshot(
-            "22222222-2222-4222-8222-222222222222", 20, {file("b.txt", 1, 1)});
+        const foldersnap::Snapshot before =
+            makeSnapshot("11111111-1111-4111-8111-111111111111", 10, {file("a.txt", 1, 1)});
+        const foldersnap::Snapshot after =
+            makeSnapshot("22222222-2222-4222-8222-222222222222", 20, {file("b.txt", 1, 1)});
         int checks = 0;
-        const foldersnap::DiffResult result = foldersnap::DiffEngine::compare(
-            before, after, [&checks]() { return ++checks > 1; });
+        const foldersnap::DiffResult result =
+            foldersnap::DiffEngine::compare(before, after, [&checks]() { return ++checks > 1; });
 
         QVERIFY(result.cancelled);
         QVERIFY(result.entries.isEmpty());
+    }
+
+    void projectsHierarchySizesAndSiblingOrder()
+    {
+        const foldersnap::Snapshot before =
+            makeSnapshot("11111111-1111-4111-8111-111111111111", 10, {});
+        const foldersnap::Snapshot after =
+            makeSnapshot("22222222-2222-4222-8222-222222222222", 20,
+                         {file("root.txt", 20, 1), file("docs/file10.txt", 5, 1),
+                          file("docs/file2.txt", 5, 1), file("docs/nested/big.bin", 30, 1)});
+        const foldersnap::DiffResult diff = foldersnap::DiffEngine::compare(before, after);
+
+        const QList<foldersnap::ComparisonTreeRow> rows =
+            foldersnap::buildComparisonTree(before, after, diff);
+        QStringList paths;
+        for (const foldersnap::ComparisonTreeRow &row : rows)
+        {
+            paths.append(row.path);
+        }
+        QCOMPARE(paths, QStringList({"docs", "docs/nested", "docs/nested/big.bin", "docs/file2.txt",
+                                     "docs/file10.txt", "root.txt"}));
+        QVERIFY(rows.at(0).folder);
+        QVERIFY(!rows.at(0).hasBeforeSize);
+        QVERIFY(rows.at(0).hasAfterSize);
+        QCOMPARE(rows.at(0).afterBytes, qint64(40));
+        QCOMPARE(rows.at(1).afterBytes, qint64(30));
+    }
+
+    void omitsUncertainEntriesFromOrdinaryTree()
+    {
+        const foldersnap::Snapshot before =
+            makeSnapshot("11111111-1111-4111-8111-111111111111", 10, {file("private/a.txt", 1, 1)});
+        foldersnap::Snapshot after = makeSnapshot("22222222-2222-4222-8222-222222222222", 20, {});
+        after.header.scanWarnings.append({"private", foldersnap::WarningOperation::Enumerate,
+                                          foldersnap::WarningCategory::AccessDenied, "denied"});
+        const foldersnap::DiffResult diff = foldersnap::DiffEngine::compare(before, after);
+
+        QVERIFY(foldersnap::buildComparisonTree(before, after, diff).isEmpty());
     }
 };
 
