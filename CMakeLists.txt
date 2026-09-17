@@ -38,6 +38,7 @@ add_library(folder_snap_core STATIC
     src/ignore/IgnoreMatcher.h src/ignore/IgnoreMatcher.cpp
     src/diff/DiffEngine.h src/diff/DiffEngine.cpp
     src/diff/ComparisonTree.h src/diff/ComparisonTree.cpp
+    src/export/ExportBuilder.h src/export/ExportBuilder.cpp
     src/storage/AtomicFile.h src/storage/AtomicFile.cpp
     src/storage/ConfigurationStore.h src/storage/ConfigurationStore.cpp
     src/storage/StoragePaths.h src/storage/StoragePaths.cpp
@@ -151,7 +152,7 @@ endif()
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS QuickTest Test)
 
-    foreach(core_test IN ITEMS paths ignore domain storage scanner diff schedule)
+    foreach(core_test IN ITEMS paths ignore domain storage scanner diff schedule export)
         qt_add_executable(tst_${core_test} tests/tst_${core_test}.cpp)
         target_link_libraries(tst_${core_test} PRIVATE folder_snap_core Qt6::Test)
         target_compile_definitions(tst_${core_test} PRIVATE

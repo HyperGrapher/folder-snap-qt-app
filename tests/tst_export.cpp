@@ -1,0 +1,94 @@
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QtTest>
+
+#include "diff/DiffEngine.h"
+#include "domain/JsonCodec.h"
+#include "export/ExportBuilder.h"
+
+namespace
+{
+foldersnap::Snapshot fixtureSnapshot()
+{
+    QFile fixture(QString(FOLDERSNAP_FIXTURE_DIR) + "/snapshot-v2.json");
+    if (!fixture.open(QIODevice::ReadOnly))
+    {
+        qFatal("Could not open the snapshot fixture.");
+    }
+    return foldersnap::decodeSnapshot(fixture.readAll());
+}
+} // namespace
+
+class ExportTest final : public QObject
+{
+    Q_OBJECT
+
+  private slots:
+    void snapshotDtoPreservesExactValuesAndUnknownDates()
+    {
+        foldersnap::Snapshot snapshot = fixtureSnapshot();
+        snapshot.header.displayTitle = "</script><script>alert('blocked')</script>";
+        const QByteArray before = foldersnap::encodeSnapshot(snapshot);
+
+        const QJsonObject dto = foldersnap::ExportBuilder::snapshotDto(snapshot);
+
+        QCOMPARE(dto.value("schemaVersion").toInt(), 1);
+        QCOMPARE(dto.value("reportType").toString(), QString("snapshot"));
+        const QJsonObject header = dto.value("header").toObject();
+        QCOMPARE(header.value("rootTitle").toString(), snapshot.header.displayTitle);
+        QCOMPARE(header.value("totalFileBytes").toString(), QString("9007199254740993"));
+        const QJsonArray entries = dto.value("entries").toArray();
+        QCOMPARE(entries.size(), snapshot.entries.size());
+        QVERIFY(entries.first().toObject().value("createdAtUtc").isNull());
+        QCOMPARE(entries.last().toObject().value("sizeBytes").toString(),
+                 QString("9007199254740993"));
+        QCOMPARE(foldersnap::encodeSnapshot(snapshot), before);
+    }
+
+    void snapshotCsvUsesBomAndRfc4180Quoting()
+    {
+        foldersnap::Snapshot snapshot = fixtureSnapshot();
+        snapshot.entries[1].linkTarget = "target,\"quoted\"\nline";
+
+        const QByteArray csv = foldersnap::ExportBuilder::snapshotCsv(snapshot);
+
+        QCOMPARE(csv.left(3), QByteArray::fromHex("efbbbf"));
+        QVERIFY(
+            csv.contains("path,displayPath,type,sizeBytes,createdAtUtc,modifiedAtUtc,attributes,"
+                         "linkTarget\r\n"));
+        QVERIFY(csv.contains("\"target,\"\"quoted\"\"\nline\""));
+        QVERIFY(csv.contains("9007199254740993"));
+        QVERIFY(csv.endsWith("\r\n"));
+    }
+
+    void comparisonDtoAndCsvContainBothSides()
+    {
+        const foldersnap::Snapshot before = fixtureSnapshot();
+        foldersnap::Snapshot after = before;
+        after.header.snapshotId = "33333333-3333-4333-8333-333333333333";
+        after.header.startedAtUtc.nanoseconds += 10000000000LL;
+        after.header.completedAtUtc.nanoseconds += 10000000000LL;
+        after.entries.last().size += 7;
+        after.entries.last().modifiedNs += 1;
+        after.header.totalFileBytes += 7;
+        const foldersnap::DiffResult diff = foldersnap::DiffEngine::compare(before, after);
+        QCOMPARE(diff.summary.modifiedCount, qint64(1));
+
+        const QJsonObject dto = foldersnap::ExportBuilder::comparisonDto(before, after, diff);
+        QCOMPARE(dto.value("reportType").toString(), QString("comparison"));
+        const QJsonObject entry = dto.value("entries").toArray().first().toObject();
+        QCOMPARE(entry.value("change").toString(), QString("modified"));
+        QCOMPARE(entry.value("before").toObject().value("sizeBytes").toString(),
+                 QString("9007199254740993"));
+        QCOMPARE(entry.value("after").toObject().value("sizeBytes").toString(),
+                 QString("9007199254741000"));
+
+        const QByteArray csv = foldersnap::ExportBuilder::comparisonCsv(before, after, diff);
+        QCOMPARE(csv.left(3), QByteArray::fromHex("efbbbf"));
+        QVERIFY(csv.contains("modified,metadata,file,file,9007199254740993,9007199254741000"));
+    }
+};
+
+QTEST_MAIN(ExportTest)
+#include "tst_export.moc"
