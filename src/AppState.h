@@ -332,6 +332,11 @@ class AppState : public QObject
     void scanningChanged();
     void scanProgressChanged();
     void scanErrorChanged();
+    void scanStarted(const QString &rootId);
+    void scanProgressed(const QString &rootId, int progress);
+    void scanCompleted(const QString &rootId, const QString &snapshotId, qint64 warningCount);
+    void scanFailed(const QString &rootId, const QString &error);
+    void configurationChanged();
     void comparingChanged();
     void comparisonChanged();
     void sheetChanged();

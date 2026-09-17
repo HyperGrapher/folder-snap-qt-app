@@ -167,7 +167,7 @@ Exit: large comparisons remain responsive and return the documented classificati
 - [x] Implement watched-folder add, duplicate rejection, rename, archive/unarchive, settings, and Explorer commands.
 - [x] Offer an immediate first snapshot after folder registration.
 - [x] Implement scan request orchestration, the two-scan limit, per-root coalescing, and Manual-before-Scheduled ordering.
-- [ ] Expose bounded UI-facing progress, completion, warning, failure, and configuration signals.
+- [x] Expose bounded UI-facing progress, completion, warning, failure, and configuration signals.
 - [x] Implement Manual, 1/3/6/12-hour, daily, weekly, and monthly schedules.
 - [x] Implement local-time calendar calculation, UTC persistence, DST behavior, monthly clamping, missed-run collapse, and anchor preservation.
 - [x] Implement clean cancellation and service shutdown.

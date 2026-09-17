@@ -55,6 +55,10 @@ class AppStateTest final : public QObject
             AppState state;
             state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
             QCOMPARE(state.roots().size(), 1);
+            QSignalSpy startedSpy(&state, &AppState::scanStarted);
+            QSignalSpy progressSpy(&state, &AppState::scanProgressed);
+            QSignalSpy completedSpy(&state, &AppState::scanCompleted);
+            QSignalSpy failedSpy(&state, &AppState::scanFailed);
 
             state.takeSnapshot();
             QTRY_VERIFY_WITH_TIMEOUT(!state.scanning(), 5000);
@@ -67,6 +71,16 @@ class AppStateTest final : public QObject
             state.takeSnapshot();
             QTRY_VERIFY_WITH_TIMEOUT(!state.scanning(), 5000);
             QCOMPARE(state.snapshots().size(), 2);
+            QCOMPARE(startedSpy.count(), 2);
+            QCOMPARE(completedSpy.count(), 2);
+            QCOMPARE(failedSpy.count(), 0);
+            QVERIFY(!progressSpy.isEmpty());
+            for (const QList<QVariant> &arguments : progressSpy)
+            {
+                const int progress = arguments.at(1).toInt();
+                QVERIFY(progress >= 0);
+                QVERIFY(progress <= 100);
+            }
 
             const QVariantList snapshots = state.snapshots();
             state.chooseSnapshot(snapshots.at(1).toMap().value("id").toString());
@@ -91,14 +105,17 @@ class AppStateTest final : public QObject
         const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
 
         AppState state;
+        QSignalSpy configurationSpy(&state, &AppState::configurationChanged);
         state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
         QCOMPARE(state.roots().size(), 1);
         QCOMPARE(state.selectedSection(), AppState::Section::Folders);
         QVERIFY(state.toast().contains("Take a snapshot"));
+        QCOMPARE(configurationSpy.count(), 1);
 
         state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
         QCOMPARE(state.roots().size(), 1);
         QCOMPARE(state.toast(), QString("That folder is already being watched."));
+        QCOMPARE(configurationSpy.count(), 1);
 
         state.updateRoot("Renamed folder", "Every 3 hours", 25, "cache/\n*.tmp", true);
         QCOMPARE(state.currentRoot().value("name").toString(), QString("Renamed folder"));
@@ -106,15 +123,18 @@ class AppStateTest final : public QObject
         QCOMPARE(state.currentRoot().value("retention").toInt(), 25);
         QVERIFY(state.currentRoot().value("archived").toBool());
         QCOMPARE(state.ignoreRules(), QString("cache/\n*.tmp"));
+        QCOMPARE(configurationSpy.count(), 2);
 
         state.updateRoot({}, "Manual only", 42, {}, false);
         QCOMPARE(state.currentRoot().value("name").toString(), QString("Renamed folder"));
         QCOMPARE(state.currentRoot().value("retention").toInt(), 25);
         QVERIFY(state.currentRoot().value("archived").toBool());
+        QCOMPARE(configurationSpy.count(), 2);
 
         state.updateRoot("Renamed folder", "Manual only", 100, "cache/", false);
         QVERIFY(!state.currentRoot().value("archived").toBool());
         QCOMPARE(state.currentRoot().value("retention").toInt(), 100);
+        QCOMPARE(configurationSpy.count(), 3);
 
         const foldersnap::StoragePaths paths =
             foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
@@ -124,6 +144,30 @@ class AppStateTest final : public QObject
         QCOMPARE(persisted.retention, 100);
         QCOMPARE(persisted.ignoreRules, QStringList{"cache/"});
         QVERIFY(!persisted.archived);
+    }
+
+    void reportsScanFailures()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+
+        AppState state;
+        state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
+        QVERIFY(watchedDirectory.remove());
+        QSignalSpy failedSpy(&state, &AppState::scanFailed);
+        QSignalSpy completedSpy(&state, &AppState::scanCompleted);
+
+        state.takeSnapshot();
+
+        QTRY_COMPARE_WITH_TIMEOUT(failedSpy.count(), 1, 5000);
+        QCOMPARE(completedSpy.count(), 0);
+        QVERIFY(!failedSpy.first().at(0).toString().isEmpty());
+        QCOMPARE(failedSpy.first().at(1).toString(), state.scanError());
+        QVERIFY(!state.scanning());
     }
 
     void runsOneCatchUpSnapshotForAnOverdueSchedule()

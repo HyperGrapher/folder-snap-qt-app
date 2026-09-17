@@ -300,10 +300,18 @@ AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths()
     m_scanCoordinator = std::make_unique<foldersnap::ScanCoordinator>(this);
     m_comparisonWatcher = std::make_unique<QFutureWatcher<ComparisonJobResult>>(this);
     connect(m_scanCoordinator.get(), &foldersnap::ScanCoordinator::activeChanged, this,
-            [this](const QString &, bool) { updateCurrentScanState(); });
+            [this](const QString &rootId, bool active)
+            {
+                if (active)
+                {
+                    emit scanStarted(rootId);
+                }
+                updateCurrentScanState();
+            });
     connect(m_scanCoordinator.get(), &foldersnap::ScanCoordinator::progressChanged, this,
             [this](const QString &rootId, int value)
             {
+                emit scanProgressed(rootId, value);
                 const auto *root = currentConfigurationRoot();
                 if (!root || root->rootId != rootId)
                 {
@@ -915,6 +923,7 @@ void AppState::updateRoot(const QString &name, const QString &schedule, int rete
         foldersnap::validateConfiguration(updatedConfiguration);
         foldersnap::ConfigurationStore(m_paths).saveConfiguration(updatedConfiguration);
         m_configuration = std::move(updatedConfiguration);
+        emit configurationChanged();
         if (becameArchived)
         {
             m_scanCoordinator->cancelRoot(rootId);
@@ -1103,6 +1112,8 @@ void AppState::finishScan(const foldersnap::ScanJobResult &result)
                      .arg(formatCount(result.commit.record.fileCount),
                           formatBytes(result.commit.record.totalFileBytes)));
     }
+    emit scanCompleted(result.rootId, result.commit.record.snapshotId,
+                       result.commit.record.warningCount);
 }
 
 void AppState::failScan(const QString &rootId, const QString &error)
@@ -1117,6 +1128,7 @@ void AppState::failScan(const QString &rootId, const QString &error)
     {
         setScanError(error);
     }
+    emit scanFailed(rootId, error);
 }
 
 void AppState::updateCurrentScanState()
@@ -1232,6 +1244,7 @@ void AppState::saveConfiguration()
     {
         foldersnap::validateConfiguration(m_configuration);
         foldersnap::ConfigurationStore(m_paths).saveConfiguration(m_configuration);
+        emit configurationChanged();
     }
     catch (const foldersnap::DomainError &error)
     {
