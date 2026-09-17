@@ -118,6 +118,7 @@ Dialog {
             }
             SearchField {
                 id: nameInput
+                objectName: "folderNameInput"
                 Layout.fillWidth: true
                 leftPadding: 12
                 placeholderText: "e.g. Weekend projects"
@@ -147,6 +148,7 @@ Dialog {
                 }
                 SelectBox {
                     id: scheduleInput
+                    objectName: "folderScheduleInput"
                     implicitWidth: 200
                     model: ["Manual only", "Every 1 hour", "Every 3 hours", "Every 6 hours", "Every 12 hours", "Daily at 09:00", "Weekly · Monday 09:00", "Monthly · day 1, 09:00"]
                     currentIndex: Math.max(0, model.indexOf(dialog.appState.currentRoot.schedule))
@@ -161,6 +163,7 @@ Dialog {
                 }
                 SelectBox {
                     id: retentionInput
+                    objectName: "folderRetentionInput"
                     implicitWidth: 200
                     model: ["10 snapshots", "25 snapshots", "50 snapshots", "100 snapshots", "Unlimited"]
                     currentIndex: Math.max(0, [10, 25, 50, 100, 0].indexOf(dialog.appState.currentRoot.retention))
@@ -175,6 +178,7 @@ Dialog {
             }
             TextArea {
                 id: ignoreInput
+                objectName: "folderIgnoreInput"
                 visible: dialog.kind === "folder"
                 Layout.fillWidth: true
                 implicitHeight: 82
@@ -183,6 +187,7 @@ Dialog {
                 font.family: "Consolas"
                 font.pixelSize: 12
                 padding: 12
+                Accessible.name: "Exclusion rules"
                 background: Rectangle {
                     radius: 8
                     color: "#151f23"
@@ -191,6 +196,7 @@ Dialog {
             }
             SettingRow {
                 id: archiveInput
+                objectName: "folderArchiveInput"
                 visible: dialog.kind === "folder"
                 Layout.fillWidth: true
                 title: "Archive this folder"
@@ -282,7 +288,7 @@ Dialog {
                     animationsEnabled: dialog.motion.transitionsEnabled
                     text: "Export snapshot"
                     glyph: "export"
-                    enabled: dialog.appState.snapshot(dialog.appState.detailId).payloadAvailable
+                    enabled: dialog.appState.snapshot(dialog.appState.detailId).payloadAvailable === true
                     onClicked: dialog.appState.sheet = "export"
                 }
                 Item {
@@ -483,6 +489,7 @@ Dialog {
                 onClicked: dialog.close()
             }
             ActionButton {
+                objectName: "dialogPrimaryButton"
                 animationsEnabled: dialog.motion.transitionsEnabled
                 text: dialog.kind === "folder" ? "Save preferences" : dialog.kind === "cleanup" ? "Cleanup unavailable" : dialog.isDestructive ? (dialog.kind === "clear" ? "Clear history" : "Delete snapshot") : "Done"
                 enabled: dialog.kind !== "cleanup"

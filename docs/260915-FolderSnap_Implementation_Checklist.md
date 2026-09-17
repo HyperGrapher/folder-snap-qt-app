@@ -183,7 +183,7 @@ Exit: manual and scheduled snapshot work is reliable, cancellable, persisted, an
 - [x] Implement the exact explicit A/B click, rollover, deselection, refresh, and root-change rules.
 - [x] Connect comparison calculation, filters, search, expansion, and summaries.
 - [x] Preserve usable empty/loading/error/missing-payload states when switching from fake to real data.
-- [ ] Add QML/UI integration tests for all primary workflows and accessibility behavior.
+- [x] Add QML/UI integration tests for all primary workflows and accessibility behavior.
 
 Exit: all non-export and non-cleanup core workflows operate on real local data without GUI-thread stalls.
 
