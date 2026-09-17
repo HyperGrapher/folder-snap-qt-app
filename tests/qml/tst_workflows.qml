@@ -100,6 +100,15 @@ TestCase {
         compare(state.currentRoot.retention, 25);
         compare(state.ignoreRules, "cache/\n*.tmp");
 
+        state.openSheet("exportComparison");
+        tryCompare(dialog, "visible", true, 1000);
+        const exportOptions = findChild(dialog, "exportOptions");
+        verify(exportOptions !== null);
+        compare(exportOptions.count, 2);
+        verify(!state.exporting);
+        dialog.close();
+        tryCompare(dialog, "visible", false, 1000);
+
         state.openSheet("removeFolder");
         tryCompare(dialog, "visible", true, 1000);
         compare(saveButton.Accessible.name, "Remove folder and history");

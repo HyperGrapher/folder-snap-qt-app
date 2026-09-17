@@ -94,6 +94,25 @@ class AppStateTest final : public QObject
             QCOMPARE(state.modifiedCount(), 1);
             QCOMPARE(state.addedCount(), 0);
             QCOMPARE(state.removedCount(), 0);
+
+            const QString snapshotExport = dataDirectory.filePath("snapshot-report.csv");
+            state.setDetailId(snapshots.at(0).toMap().value("id").toString());
+            state.exportSnapshot("csv", QUrl::fromLocalFile(snapshotExport));
+            QTRY_VERIFY_WITH_TIMEOUT(!state.exporting(), 5000);
+            QVERIFY(state.exportError().isEmpty());
+            QFile snapshotReport(snapshotExport);
+            QVERIFY(snapshotReport.open(QIODevice::ReadOnly));
+            QCOMPARE(snapshotReport.read(3), QByteArray::fromHex("efbbbf"));
+
+            const QString comparisonExport = dataDirectory.filePath("comparison-report.html");
+            state.exportComparison("html", QUrl::fromLocalFile(comparisonExport));
+            QTRY_VERIFY_WITH_TIMEOUT(!state.exporting(), 5000);
+            QVERIFY(state.exportError().isEmpty());
+            QFile comparisonReport(comparisonExport);
+            QVERIFY(comparisonReport.open(QIODevice::ReadOnly));
+            const QByteArray comparisonHtml = comparisonReport.readAll();
+            QVERIFY(comparisonHtml.contains("\"reportType\":\"comparison\""));
+            QVERIFY(!comparisonHtml.contains("/* FOLDERSNAP_REPORT_DATA */"));
         }
         qunsetenv("FOLDERSNAP_DATA_DIR");
     }

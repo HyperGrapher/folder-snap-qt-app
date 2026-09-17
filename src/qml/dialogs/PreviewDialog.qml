@@ -11,11 +11,13 @@ Dialog {
     readonly property string kind: appState.sheet
     readonly property bool isExport: kind === "export" || kind === "exportComparison"
     readonly property bool isDestructive: kind === "delete" || kind === "clear" || kind === "removeFolder"
+    property string pendingExportFormat: "html"
+    property bool pendingComparisonExport: false
     modal: true
     anchors.centerIn: parent
     width: Math.min(570, parent ? parent.width - 48 : 570)
     padding: 24
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    closePolicy: appState.exporting ? Popup.NoAutoClose : Popup.CloseOnEscape | Popup.CloseOnPressOutside
     visible: kind !== "" && kind !== "add"
     onClosed: appState.sheet = ""
     onKindChanged: {
@@ -30,6 +32,19 @@ Dialog {
             dialog.appState.addFolder(selectedFolder);
         }
         onRejected: dialog.appState.sheet = ""
+    }
+    FileDialog {
+        id: exportChooser
+        title: dialog.pendingComparisonExport ? "Export comparison report" : "Export snapshot report"
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: dialog.pendingExportFormat
+        nameFilters: dialog.pendingExportFormat === "html" ? ["HTML report (*.html)"] : ["CSV spreadsheet (*.csv)"]
+        onAccepted: {
+            if (dialog.pendingComparisonExport)
+                dialog.appState.exportComparison(dialog.pendingExportFormat, selectedFile);
+            else
+                dialog.appState.exportSnapshot(dialog.pendingExportFormat, selectedFile);
+        }
     }
     background: Panel {
         color: "#1c272c"
@@ -97,6 +112,7 @@ Dialog {
             glyph: "close"
             primary: false
             quiet: true
+            enabled: !dialog.appState.exporting
             onClicked: dialog.close()
         }
     }
@@ -104,7 +120,7 @@ Dialog {
         spacing: 16
         BodyText {
             Layout.fillWidth: true
-            text: dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Offline report export is planned for a later milestone." : dialog.kind === "cleanup" ? "Added entries can be reviewed here. Moving live files is disabled until the safety workflow is implemented." : dialog.kind === "removeFolder" ? "This removes the watched-folder registration and all of its saved snapshot history. The real folder and its files are untouched." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
+            text: dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Save a private, offline report. Snapshot data stays on this computer." : dialog.kind === "cleanup" ? "Added entries can be reviewed here. Moving live files is disabled until the safety workflow is implemented." : dialog.kind === "removeFolder" ? "This removes the watched-folder registration and all of its saved snapshot history. The real folder and its files are untouched." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
             font.pixelSize: 12
         }
         ColumnLayout {
@@ -340,16 +356,19 @@ Dialog {
             Layout.fillWidth: true
             spacing: 12
             Repeater {
+                objectName: "exportOptions"
                 model: [
                     {
                         name: "Interactive HTML",
                         detail: "Search, sort, and explore an offline folder tree.",
-                        icon: "overview"
+                        icon: "overview",
+                        format: "html"
                     },
                     {
                         name: "CSV spreadsheet",
                         detail: "Every entry, ready for your own analysis.",
-                        icon: "file"
+                        icon: "file",
+                        format: "csv"
                     }
                 ]
                 Panel {
@@ -378,12 +397,54 @@ Dialog {
                             }
                         }
                         ActionButton {
+                            objectName: modelData.format === "html" ? "exportHtmlButton" : "exportCsvButton"
                             animationsEnabled: dialog.motion.transitionsEnabled
-                            text: "Export unavailable"
+                            text: dialog.appState.exporting ? "Exporting…" : "Choose location"
                             primary: false
-                            enabled: false
+                            enabled: !dialog.appState.exporting
+                            onClicked: {
+                                dialog.pendingExportFormat = modelData.format;
+                                dialog.pendingComparisonExport = dialog.kind === "exportComparison";
+                                exportChooser.open();
+                            }
                         }
                     }
+                }
+            }
+            ColumnLayout {
+                visible: dialog.appState.exporting
+                Layout.fillWidth: true
+                spacing: 8
+                LabelText {
+                    text: "Building report…"
+                    color: Theme.accent
+                    font.weight: Font.DemiBold
+                }
+                ProgressBar {
+                    Layout.fillWidth: true
+                    indeterminate: true
+                    Accessible.name: "Export in progress"
+                }
+                ActionButton {
+                    objectName: "cancelExportButton"
+                    text: "Cancel export"
+                    primary: false
+                    quiet: true
+                    onClicked: dialog.appState.cancelExport()
+                }
+            }
+            Panel {
+                visible: dialog.appState.exportError !== ""
+                Layout.fillWidth: true
+                implicitHeight: 58
+                color: "#342f26"
+                border.color: "#75594a"
+                BodyText {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    text: dialog.appState.exportError
+                    color: Theme.warning
+                    font.pixelSize: 11
                 }
             }
         }

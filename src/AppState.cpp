@@ -2,11 +2,13 @@
 
 #include <algorithm>
 #include <limits>
+#include <optional>
 #include <utility>
 
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QLocale>
 #include <QPromise>
@@ -78,6 +80,34 @@ QString shortDate(UtcTimestamp timestamp)
     return QDateTime::fromMSecsSinceEpoch(timestamp.nanoseconds / 1000000,
                                           QTimeZone::systemTimeZone())
         .toString("dd MMM · HH:mm");
+}
+
+std::optional<foldersnap::ExportFormat> exportFormat(const QString &format)
+{
+    if (format.compare("html", Qt::CaseInsensitive) == 0)
+    {
+        return foldersnap::ExportFormat::Html;
+    }
+    if (format.compare("csv", Qt::CaseInsensitive) == 0)
+    {
+        return foldersnap::ExportFormat::Csv;
+    }
+    return std::nullopt;
+}
+
+QString exportPath(const QUrl &destination, foldersnap::ExportFormat format)
+{
+    QString path = destination.toLocalFile();
+    if (path.isEmpty())
+    {
+        throw foldersnap::DomainError(foldersnap::ErrorCode::InvalidPath,
+                                      "Choose a local export destination.");
+    }
+    if (QFileInfo(path).suffix().isEmpty())
+    {
+        path += format == foldersnap::ExportFormat::Html ? ".html" : ".csv";
+    }
+    return path;
 }
 
 QString triggerName(foldersnap::SnapshotTrigger trigger)
@@ -298,6 +328,7 @@ AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths()
     m_notifyScheduledSuccess = m_configuration.notifyScheduledSuccess;
     m_retention = m_configuration.defaultRetention;
     m_scanCoordinator = std::make_unique<foldersnap::ScanCoordinator>(this);
+    m_exportCoordinator = std::make_unique<foldersnap::ExportCoordinator>(this);
     m_comparisonWatcher = std::make_unique<QFutureWatcher<ComparisonJobResult>>(this);
     connect(m_scanCoordinator.get(), &foldersnap::ScanCoordinator::activeChanged, this,
             [this](const QString &rootId, bool active)
@@ -339,6 +370,34 @@ AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths()
             });
     connect(m_comparisonWatcher.get(), &QFutureWatcher<ComparisonJobResult>::finished, this,
             &AppState::finishComparison);
+    connect(m_exportCoordinator.get(), &foldersnap::ExportCoordinator::activeChanged, this,
+            [this](bool active)
+            {
+                if (m_exporting == active)
+                {
+                    return;
+                }
+                m_exporting = active;
+                emit exportChanged();
+            });
+    connect(
+        m_exportCoordinator.get(), &foldersnap::ExportCoordinator::succeeded, this,
+        [this](const foldersnap::ExportJobResult &result)
+        {
+            setExportError({});
+            setSheet({});
+            setToast(
+                QString("Report exported · %1").arg(QFileInfo(result.destinationPath).fileName()));
+        });
+    connect(m_exportCoordinator.get(), &foldersnap::ExportCoordinator::failed, this,
+            [this](const QString &error)
+            { setExportError(error.isEmpty() ? "Could not export the report." : error); });
+    connect(m_exportCoordinator.get(), &foldersnap::ExportCoordinator::cancelled, this,
+            [this]()
+            {
+                setExportError({});
+                setToast("Export cancelled. No report was changed.");
+            });
     m_scheduleTimer.setInterval(15000);
     connect(&m_scheduleTimer, &QTimer::timeout, this, &AppState::evaluateSchedules);
     m_scheduleTimer.start();
@@ -806,6 +865,75 @@ void AppState::startComparison()
         }));
 }
 
+void AppState::exportSnapshot(const QString &format, const QUrl &destination)
+{
+    if (m_detailId.isEmpty())
+    {
+        setExportError("Choose a snapshot to export.");
+        return;
+    }
+    startExport(m_detailId, {}, format, destination);
+}
+
+void AppState::exportComparison(const QString &format, const QUrl &destination)
+{
+    if (!m_comparisonReady || !hasPair())
+    {
+        setExportError("Complete a comparison before exporting it.");
+        return;
+    }
+    startExport(m_beforeId, m_afterId, format, destination);
+}
+
+void AppState::cancelExport()
+{
+    if (m_exportCoordinator)
+    {
+        m_exportCoordinator->cancel();
+    }
+}
+
+void AppState::startExport(const QString &firstSnapshotId, const QString &secondSnapshotId,
+                           const QString &format, const QUrl &destination)
+{
+    if (m_exporting)
+    {
+        return;
+    }
+    try
+    {
+        const std::optional<foldersnap::ExportFormat> parsedFormat = exportFormat(format);
+        if (!parsedFormat)
+        {
+            throw foldersnap::DomainError(foldersnap::ErrorCode::InvalidData,
+                                          "Choose HTML or CSV export format.");
+        }
+
+        foldersnap::ExportJobRequest request;
+        request.paths = m_paths;
+        request.firstSnapshotId = firstSnapshotId;
+        request.secondSnapshotId = secondSnapshotId;
+        request.destinationPath = exportPath(destination, *parsedFormat);
+        request.format = *parsedFormat;
+        if (*parsedFormat == foldersnap::ExportFormat::Html)
+        {
+            QFile templateFile(":/resources/snapshot-export-template.html");
+            if (!templateFile.open(QIODevice::ReadOnly))
+            {
+                throw foldersnap::DomainError(foldersnap::ErrorCode::Io,
+                                              "The packaged HTML report template is unavailable.");
+            }
+            request.htmlTemplate = templateFile.readAll();
+        }
+        setExportError({});
+        m_exportCoordinator->start(std::move(request));
+    }
+    catch (const foldersnap::DomainError &error)
+    {
+        setExportError(error.message());
+    }
+}
+
 void AppState::openSheet(const QString &kind)
 {
     if ((kind == "detail" || kind == "delete") && m_detailId.isEmpty() && !m_snapshots.isEmpty())
@@ -817,6 +945,10 @@ void AppState::openSheet(const QString &kind)
     m_cleanupReviewed = false;
     m_cleanupResult.clear();
     emit cleanupChanged();
+    if (kind == "export" || kind == "exportComparison")
+    {
+        setExportError({});
+    }
     setSheet(kind);
 }
 
@@ -1323,6 +1455,16 @@ void AppState::setComparing(bool comparing)
     }
     m_comparing = comparing;
     emit comparingChanged();
+}
+
+void AppState::setExportError(const QString &error)
+{
+    if (m_exportError == error)
+    {
+        return;
+    }
+    m_exportError = error;
+    emit exportChanged();
 }
 
 foldersnap::WatchedRoot *AppState::currentConfigurationRoot()

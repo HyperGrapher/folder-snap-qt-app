@@ -16,7 +16,9 @@ read watched folders or modify snapshot payloads, history, configuration, or com
 worker thread. Cancellation is checked during decode and large report loops. The completed report
 is written through a cancellable `QSaveFile` replacement, so cancellation or failure leaves an
 existing destination unchanged and does not expose a partial report. UI actions are wired
-separately.
+through native save dialogs for individual snapshots and completed comparisons. The export sheet
+shows an indeterminate progress state, supports cancellation, and keeps worker errors visible
+without dismissing the format choices.
 
 The packaged standalone HTML template contains exactly one `/* FOLDERSNAP_REPORT_DATA */` marker.
 Injection escapes `<`, `>`, `&`, U+2028, and U+2029 before replacing that marker. Report rendering

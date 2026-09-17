@@ -11,6 +11,7 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
+#include "application/ExportCoordinator.h"
 #include "application/ScanCoordinator.h"
 #include "domain/Configuration.h"
 #include "domain/Snapshot.h"
@@ -59,6 +60,8 @@ class AppState : public QObject
     Q_PROPERTY(int scanProgress READ scanProgress NOTIFY scanProgressChanged)
     Q_PROPERTY(QString scanError READ scanError NOTIFY scanErrorChanged)
     Q_PROPERTY(bool comparing READ comparing NOTIFY comparingChanged)
+    Q_PROPERTY(bool exporting READ exporting NOTIFY exportChanged)
+    Q_PROPERTY(QString exportError READ exportError NOTIFY exportChanged)
     Q_PROPERTY(bool comparisonReady READ comparisonReady NOTIFY comparisonChanged)
     Q_PROPERTY(QVariantList changes READ changes NOTIFY comparisonChanged)
     Q_PROPERTY(QVariantList displayedChanges READ displayedChanges NOTIFY comparisonChanged)
@@ -169,6 +172,14 @@ class AppState : public QObject
     [[nodiscard]] bool comparing() const
     {
         return m_comparing;
+    }
+    [[nodiscard]] bool exporting() const
+    {
+        return m_exporting;
+    }
+    [[nodiscard]] QString exportError() const
+    {
+        return m_exportError;
     }
     [[nodiscard]] bool comparisonReady() const
     {
@@ -308,6 +319,9 @@ class AppState : public QObject
     Q_INVOKABLE void takeSnapshot();
     Q_INVOKABLE void cancelScan();
     Q_INVOKABLE void startComparison();
+    Q_INVOKABLE void exportSnapshot(const QString &format, const QUrl &destination);
+    Q_INVOKABLE void exportComparison(const QString &format, const QUrl &destination);
+    Q_INVOKABLE void cancelExport();
     Q_INVOKABLE void openSheet(const QString &kind);
     Q_INVOKABLE void openCurrentFolder();
     Q_INVOKABLE void addFolder(const QUrl &folderUrl);
@@ -340,6 +354,7 @@ class AppState : public QObject
     void configurationChanged();
     void comparingChanged();
     void comparisonChanged();
+    void exportChanged();
     void sheetChanged();
     void toastChanged();
     void detailIdChanged();
@@ -360,6 +375,9 @@ class AppState : public QObject
     void setScanError(const QString &error);
     void setScanning(bool scanning);
     void setComparing(bool comparing);
+    void startExport(const QString &firstSnapshotId, const QString &secondSnapshotId,
+                     const QString &format, const QUrl &destination);
+    void setExportError(const QString &error);
     [[nodiscard]] foldersnap::WatchedRoot *currentConfigurationRoot();
     [[nodiscard]] const foldersnap::WatchedRoot *currentConfigurationRoot() const;
     [[nodiscard]] foldersnap::WatchedRoot *configurationRoot(const QString &rootId);
@@ -380,6 +398,8 @@ class AppState : public QObject
     int m_scanProgress{0};
     QString m_scanError;
     bool m_comparing{false};
+    bool m_exporting{false};
+    QString m_exportError;
     quint64 m_comparisonGeneration{0};
     bool m_comparisonReady{false};
     QVariantList m_changes;
@@ -408,6 +428,7 @@ class AppState : public QObject
     bool m_notifyScheduledSuccess{false};
     int m_retention{50};
     std::unique_ptr<foldersnap::ScanCoordinator> m_scanCoordinator;
+    std::unique_ptr<foldersnap::ExportCoordinator> m_exportCoordinator;
     std::unique_ptr<QFutureWatcher<ComparisonJobResult>> m_comparisonWatcher;
     QTimer m_scheduleTimer;
 };
