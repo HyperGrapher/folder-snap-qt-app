@@ -1013,6 +1013,49 @@ void AppState::clearSelectedRootHistory()
     }
 }
 
+void AppState::removeCurrentRoot()
+{
+    const auto *root = currentConfigurationRoot();
+    if (!root)
+    {
+        return;
+    }
+    const QString rootId = root->rootId;
+    if (m_scanCoordinator->isActive(rootId))
+    {
+        setToast("Cancel the active snapshot before removing this folder.");
+        return;
+    }
+    try
+    {
+        m_scanCoordinator->cancelRoot(rootId);
+        foldersnap::HistoryStore(m_paths).removeWatchedRoot(rootId);
+        m_configuration.roots.erase(std::remove_if(m_configuration.roots.begin(),
+                                                   m_configuration.roots.end(),
+                                                   [&rootId](const foldersnap::WatchedRoot &item)
+                                                   { return item.rootId == rootId; }),
+                                    m_configuration.roots.end());
+        m_rootIndex = std::min(m_rootIndex, static_cast<int>(m_configuration.roots.size()) - 1);
+        if (m_rootIndex < 0)
+        {
+            m_rootIndex = 0;
+        }
+        clearSnapshotPair();
+        m_detailId.clear();
+        emit detailIdChanged();
+        emit rootIndexChanged();
+        emit configurationChanged();
+        refreshModels();
+        updateCurrentScanState();
+        setSheet({});
+        setToast("Watched folder and its snapshot history removed.");
+    }
+    catch (const foldersnap::DomainError &error)
+    {
+        setToast(error.message());
+    }
+}
+
 QVariantMap AppState::snapshot(const QString &snapshotId) const
 {
     for (const QVariant &value : m_snapshots)

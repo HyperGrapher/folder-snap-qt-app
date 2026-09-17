@@ -99,5 +99,13 @@ TestCase {
         compare(state.currentRoot.name, "Renamed from UI");
         compare(state.currentRoot.retention, 25);
         compare(state.ignoreRules, "cache/\n*.tmp");
+
+        state.openSheet("removeFolder");
+        tryCompare(dialog, "visible", true, 1000);
+        compare(saveButton.Accessible.name, "Remove folder and history");
+        mouseClick(saveButton);
+        tryCompare(dialog, "visible", false, 1000);
+        compare(state.visibleRoots.length, 0);
+        compare(state.snapshots.length, 0);
     }
 }

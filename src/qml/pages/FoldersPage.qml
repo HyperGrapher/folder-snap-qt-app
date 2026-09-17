@@ -280,6 +280,16 @@ ColumnLayout {
                     }
                     ActionButton {
                         animationsEnabled: page.motion.transitionsEnabled
+                        text: "Remove folder"
+                        primary: false
+                        quiet: true
+                        danger: true
+                        enabled: !page.appState.scanning
+                        implicitHeight: 30
+                        onClicked: page.appState.openSheet("removeFolder")
+                    }
+                    ActionButton {
+                        animationsEnabled: page.motion.transitionsEnabled
                         text: "Clear history"
                         primary: false
                         quiet: true

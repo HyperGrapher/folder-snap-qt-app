@@ -317,6 +317,7 @@ class AppState : public QObject
     Q_INVOKABLE void saveDescription(const QString &description);
     Q_INVOKABLE void deleteSelectedSnapshot();
     Q_INVOKABLE void clearSelectedRootHistory();
+    Q_INVOKABLE void removeCurrentRoot();
     Q_INVOKABLE QVariantMap snapshot(const QString &snapshotId) const;
 
   signals:

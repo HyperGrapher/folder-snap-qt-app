@@ -33,6 +33,7 @@ class HistoryStore final
     void updateDescription(const QString &snapshotId, const QString &description) const;
     void deleteSnapshot(const QString &snapshotId) const;
     void clearRootHistory(const QString &rootId) const;
+    void removeWatchedRoot(const QString &rootId) const;
     [[nodiscard]] HistoryRepairResult repair() const;
 
   private:

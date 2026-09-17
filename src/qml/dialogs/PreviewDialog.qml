@@ -10,7 +10,7 @@ Dialog {
     required property MotionPolicy motion
     readonly property string kind: appState.sheet
     readonly property bool isExport: kind === "export" || kind === "exportComparison"
-    readonly property bool isDestructive: kind === "delete" || kind === "clear"
+    readonly property bool isDestructive: kind === "delete" || kind === "clear" || kind === "removeFolder"
     modal: true
     anchors.centerIn: parent
     width: Math.min(570, parent ? parent.width - 48 : 570)
@@ -79,7 +79,8 @@ Dialog {
                         exportComparison: "Share the difference.",
                         cleanup: "A considered cleanup.",
                         delete: "Delete this snapshot?",
-                        clear: "Clear this folder's history?"
+                        clear: "Clear this folder's history?",
+                        removeFolder: "Remove this watched folder?"
                     })[dialog.kind] || ""
                 font.pixelSize: 24
                 font.weight: Font.DemiBold
@@ -103,7 +104,7 @@ Dialog {
         spacing: 16
         BodyText {
             Layout.fillWidth: true
-            text: dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Offline report export is planned for a later milestone." : dialog.kind === "cleanup" ? "Added entries can be reviewed here. Moving live files is disabled until the safety workflow is implemented." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
+            text: dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Offline report export is planned for a later milestone." : dialog.kind === "cleanup" ? "Added entries can be reviewed here. Moving live files is disabled until the safety workflow is implemented." : dialog.kind === "removeFolder" ? "This removes the watched-folder registration and all of its saved snapshot history. The real folder and its files are untouched." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
             font.pixelSize: 12
         }
         ColumnLayout {
@@ -491,7 +492,7 @@ Dialog {
             ActionButton {
                 objectName: "dialogPrimaryButton"
                 animationsEnabled: dialog.motion.transitionsEnabled
-                text: dialog.kind === "folder" ? "Save preferences" : dialog.kind === "cleanup" ? "Cleanup unavailable" : dialog.isDestructive ? (dialog.kind === "clear" ? "Clear history" : "Delete snapshot") : "Done"
+                text: dialog.kind === "folder" ? "Save preferences" : dialog.kind === "cleanup" ? "Cleanup unavailable" : dialog.kind === "removeFolder" ? "Remove folder and history" : dialog.isDestructive ? (dialog.kind === "clear" ? "Clear history" : "Delete snapshot") : "Done"
                 enabled: dialog.kind !== "cleanup"
                 primary: !dialog.isDestructive
                 danger: dialog.isDestructive
@@ -504,6 +505,8 @@ Dialog {
                     }
                     if (dialog.kind === "clear")
                         dialog.appState.clearSelectedRootHistory();
+                    if (dialog.kind === "removeFolder")
+                        dialog.appState.removeCurrentRoot();
                     if (dialog.kind === "delete")
                         dialog.appState.deleteSelectedSnapshot();
                     dialog.close();

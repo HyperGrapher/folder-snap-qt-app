@@ -321,6 +321,87 @@ void HistoryStore::clearRootHistory(const QString &rootId) const
     }
 }
 
+void HistoryStore::removeWatchedRoot(const QString &rootId) const
+{
+    validateUuid(rootId);
+    HistoryMutationLock lock(m_paths);
+    ConfigurationStore configurationStore(m_paths);
+    SnapshotStore snapshotStore(m_paths);
+
+    const auto configurationResult = configurationStore.loadConfiguration();
+    if (configurationResult.restoredDefaults())
+    {
+        throw DomainError(ErrorCode::InvalidData,
+                          "Cannot remove a watched folder while configuration is corrupt.");
+    }
+    const Configuration originalConfiguration = configurationResult.value;
+    Configuration configuration = originalConfiguration;
+    const auto root = std::find_if(configuration.roots.begin(), configuration.roots.end(),
+                                   [&rootId](const WatchedRoot &watchedRoot)
+                                   { return watchedRoot.rootId == rootId; });
+    if (root == configuration.roots.end())
+    {
+        throw DomainError(ErrorCode::InvalidData, "Watched folder does not exist.");
+    }
+    configuration.roots.erase(root);
+
+    const auto historyResult = configurationStore.loadHistoryIndex();
+    if (historyResult.restoredDefaults())
+    {
+        throw DomainError(ErrorCode::InvalidData,
+                          "Cannot remove a watched folder while history is corrupt.");
+    }
+    const QList<HistoryRecord> originalRecords = historyResult.value;
+    QList<HistoryRecord> records = originalRecords;
+    QList<QString> snapshotIds;
+    for (const HistoryRecord &record : records)
+    {
+        if (record.rootId == rootId)
+        {
+            snapshotIds.append(record.snapshotId);
+        }
+    }
+    std::sort(snapshotIds.begin(), snapshotIds.end());
+    records.erase(std::remove_if(records.begin(), records.end(),
+                                 [&rootId](const HistoryRecord &record)
+                                 { return record.rootId == rootId; }),
+                  records.end());
+
+    QList<QString> tombstonedIds;
+    try
+    {
+        for (const QString &snapshotId : snapshotIds)
+        {
+            if (snapshotStore.movePayloadToTombstone(snapshotId))
+            {
+                tombstonedIds.append(snapshotId);
+            }
+        }
+        configurationStore.saveHistoryIndex(records);
+        configurationStore.saveConfiguration(configuration);
+    }
+    catch (...)
+    {
+        try
+        {
+            configurationStore.saveConfiguration(originalConfiguration);
+            configurationStore.saveHistoryIndex(originalRecords);
+        }
+        catch (...)
+        {
+        }
+        for (auto iterator = tombstonedIds.crbegin(); iterator != tombstonedIds.crend(); ++iterator)
+        {
+            snapshotStore.restoreTombstone(*iterator);
+        }
+        throw;
+    }
+    for (const QString &snapshotId : tombstonedIds)
+    {
+        snapshotStore.removeTombstone(snapshotId);
+    }
+}
+
 HistoryRepairResult HistoryStore::repair() const
 {
     HistoryMutationLock lock(m_paths);

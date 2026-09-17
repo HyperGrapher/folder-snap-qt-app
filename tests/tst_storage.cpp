@@ -380,6 +380,45 @@ class StorageTest final : public QObject
         QVERIFY(loadedConfiguration.roots.first().lastScanError.isEmpty());
     }
 
+    void removeWatchedRootDeletesOnlyItsConfigurationAndHistory()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        const auto source = fixtureSnapshot();
+        const QString otherRootId = "33333333-3333-4333-8333-333333333333";
+        const auto otherSnapshot = snapshotAt(2, otherRootId);
+
+        foldersnap::WatchedRoot root;
+        root.rootId = source.header.rootId;
+        root.displayName = source.header.displayTitle;
+        root.path = source.header.rootPathAtCapture;
+        root.normalizedPath = foldersnap::normalizeRootPath(root.path).identityPath;
+        foldersnap::WatchedRoot otherRoot;
+        otherRoot.rootId = otherRootId;
+        otherRoot.displayName = "Other";
+        otherRoot.path = "C:/Other";
+        otherRoot.normalizedPath = foldersnap::normalizeRootPath(otherRoot.path).identityPath;
+        foldersnap::Configuration configuration;
+        configuration.roots = {root, otherRoot};
+        foldersnap::ConfigurationStore(paths).saveConfiguration(configuration);
+
+        const foldersnap::HistoryStore historyStore(paths);
+        (void)historyStore.commitSnapshot(source, 0);
+        (void)historyStore.commitSnapshot(otherSnapshot, 0);
+
+        historyStore.removeWatchedRoot(root.rootId);
+
+        const foldersnap::Configuration persisted =
+            foldersnap::ConfigurationStore(paths).loadConfiguration().value;
+        QCOMPARE(persisted.roots, QList<foldersnap::WatchedRoot>{otherRoot});
+        QVERIFY(historyStore.loadHistoryForRoot(root.rootId).isEmpty());
+        QCOMPARE(historyStore.loadHistoryForRoot(otherRootId).size(), 1);
+        const foldersnap::SnapshotStore snapshotStore(paths);
+        QVERIFY(!snapshotStore.hasPayload(source.header.snapshotId));
+        QVERIFY(snapshotStore.hasPayload(otherSnapshot.header.snapshotId));
+    }
+
     void repairRestoresTombstonesAndRebuildsCorruptIndex()
     {
         QTemporaryDir temporaryDirectory;

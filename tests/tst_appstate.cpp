@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -9,6 +10,8 @@
 
 #include "paths/WindowsPaths.h"
 #include "storage/ConfigurationStore.h"
+#include "storage/HistoryStore.h"
+#include "storage/SnapshotStore.h"
 #include "storage/StoragePaths.h"
 
 class AppStateTest final : public QObject
@@ -144,6 +147,48 @@ class AppStateTest final : public QObject
         QCOMPARE(persisted.retention, 100);
         QCOMPARE(persisted.ignoreRules, QStringList{"cache/"});
         QVERIFY(!persisted.archived);
+    }
+
+    void removesWatchedFolderWithoutTouchingItsFiles()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+        const QString watchedFile = watchedDirectory.filePath("keep-me.txt");
+        QFile file(watchedFile);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write("untouched"), qint64(9));
+        file.close();
+
+        AppState state;
+        state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
+        state.takeSnapshot();
+        QTRY_VERIFY_WITH_TIMEOUT(!state.scanning(), 5000);
+        QCOMPARE(state.snapshots().size(), 1);
+
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        const foldersnap::Configuration before =
+            foldersnap::ConfigurationStore(paths).loadConfiguration().value;
+        const QString rootId = before.roots.first().rootId;
+        const QString snapshotId =
+            foldersnap::HistoryStore(paths).loadHistoryForRoot(rootId).first().snapshotId;
+        QVERIFY(foldersnap::SnapshotStore(paths).hasPayload(snapshotId));
+
+        state.removeCurrentRoot();
+
+        QVERIFY(state.roots().isEmpty());
+        QVERIFY(state.currentRoot().isEmpty());
+        QVERIFY(state.snapshots().isEmpty());
+        QCOMPARE(state.toast(), QString("Watched folder and its snapshot history removed."));
+        QVERIFY(foldersnap::ConfigurationStore(paths).loadConfiguration().value.roots.isEmpty());
+        QVERIFY(foldersnap::HistoryStore(paths).loadHistoryForRoot(rootId).isEmpty());
+        QVERIFY(!foldersnap::SnapshotStore(paths).hasPayload(snapshotId));
+        QVERIFY(QFile::exists(watchedFile));
+        QCOMPARE(QFileInfo(watchedFile).size(), qint64(9));
     }
 
     void reportsScanFailures()
