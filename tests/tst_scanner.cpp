@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -81,6 +82,39 @@ class ScannerTest final : public QObject
         QVERIFY(result.cancelled);
         QVERIFY(result.error.isEmpty());
     }
+
+#ifdef Q_OS_WIN
+    void doesNotTraverseDirectoryJunctions()
+    {
+        QTemporaryDir watchedDirectory;
+        QTemporaryDir junctionTarget;
+        QVERIFY(watchedDirectory.isValid());
+        QVERIFY(junctionTarget.isValid());
+        writeFile(junctionTarget.filePath("outside.txt"), "must not be counted");
+
+        const QString junctionPath = watchedDirectory.filePath("external");
+        QProcess process;
+        process.start("cmd.exe",
+                      {"/D", "/C", "mklink", "/J", QDir::toNativeSeparators(junctionPath),
+                       QDir::toNativeSeparators(junctionTarget.path())});
+        QVERIFY(process.waitForFinished());
+        QCOMPARE(process.exitCode(), 0);
+
+        foldersnap::ScanRequest request;
+        request.rootId = foldersnap::createId();
+        request.displayTitle = "Junction";
+        request.root = foldersnap::normalizeRootPath(watchedDirectory.path());
+        const foldersnap::ScanResult result =
+            foldersnap::MetadataScanner::scan(request, {}, [] { return false; });
+
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(result.snapshot.header.fileCount, qint64(0));
+        QCOMPARE(result.snapshot.header.totalFileBytes, qint64(0));
+        QCOMPARE(result.snapshot.entries.size(), 1);
+        QCOMPARE(result.snapshot.entries.first().path, QString("external"));
+        QCOMPARE(result.snapshot.entries.first().type, foldersnap::EntryType::Reparse);
+    }
+#endif
 
     void workerCountsProduceTheSameSnapshot()
     {

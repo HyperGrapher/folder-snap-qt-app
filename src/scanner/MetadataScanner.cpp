@@ -57,8 +57,14 @@ void addWarning(QList<ScanWarning> &warnings, const QString &path, WarningOperat
     warnings.append({path, operation, category, message});
 }
 
-EntryType entryType(const QFileInfo &info)
+EntryType entryType(const QFileInfo &info, quint32 attributes)
 {
+#ifdef Q_OS_WIN
+    if ((attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+    {
+        return EntryType::Reparse;
+    }
+#endif
     if (info.isSymLink())
     {
         return EntryType::Reparse;
@@ -86,13 +92,13 @@ quint32 fileAttributes(const QFileInfo &info)
 }
 
 bool appendEntry(QList<SnapshotEntry> &entries, const QFileInfo &info, const QString &relativePath,
-                 EntryType type)
+                 EntryType type, quint32 attributes)
 {
     SnapshotEntry entry;
     entry.path = relativePath;
     entry.displayPath = relativePath;
     entry.type = type;
-    entry.attributes = fileAttributes(info);
+    entry.attributes = attributes;
     if (type == EntryType::File)
     {
         entry.size = info.size();
@@ -235,7 +241,8 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
                             checkCancelled(cancelled);
                             const QString relativePath = normalizeRelativePath(
                                 QDir(request.root.displayPath).relativeFilePath(info.filePath()));
-                            const EntryType type = entryType(info);
+                            const quint32 attributes = fileAttributes(info);
+                            const EntryType type = entryType(info, attributes);
                             const bool isDirectory = type == EntryType::Directory;
                             const IgnoreMatch match = matcher.testPath(relativePath, isDirectory);
                             if (!match.included)
@@ -246,7 +253,8 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
                                 }
                                 continue;
                             }
-                            if (!appendEntry(directoryEntries, info, relativePath, type))
+                            if (!appendEntry(directoryEntries, info, relativePath, type,
+                                             attributes))
                             {
                                 addWarning(directoryWarnings, relativePath, WarningOperation::Stat,
                                            WarningCategory::Io, "The file size could not be read.");
