@@ -137,15 +137,15 @@ payloads; broader interruption simulation remains part of later integration work
 
 ## Phase 4 — Metadata scanner
 
-- [ ] Implement cancellable traversal with a default of four directory workers, a configurable ceiling of 32, and batches of 256.
+- [x] Implement cancellable traversal with a default of four directory workers, a configurable ceiling of 32, and batches of 256.
 - [x] Enforce two concurrent root scans globally and one active scan per root.
 - [x] Capture file, directory, reparse, and other metadata without reading file contents.
 - [x] Never follow reparse/symlink directories; capture link targets when possible.
 - [x] Apply ignore rules and mandatory data-directory protection correctly, including negation-safe traversal.
-- [ ] Distinguish fatal root failures from recoverable descendant warnings.
+- [x] Distinguish fatal root failures from recoverable descendant warnings.
 - [x] Produce deterministic sorted entries, sorted warnings, counts, total bytes, and bounded progress updates.
-- [ ] Honor cancellation throughout traversal, collection, sorting, and save handoff.
-- [ ] Test determinism across worker counts, partial failures, cancellation, exclusions, reparse points, Unicode, and long paths.
+- [x] Honor cancellation throughout traversal, collection, sorting, and save handoff.
+- [x] Test determinism across worker counts, partial failures, cancellation, exclusions, reparse points, Unicode, and long paths.
 
 Exit: equivalent scans produce deterministic snapshots without blocking the GUI or reading content.
 

@@ -26,6 +26,8 @@ namespace foldersnap
 {
 namespace
 {
+constexpr qsizetype kEntryBatchSize = 256;
+
 struct DirectoryWork
 {
     QString absolutePath;
@@ -186,7 +188,7 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
                 return;
             }
             const qint64 processed = processedEntries.load();
-            const int candidate = std::min(95, 5 + static_cast<int>(processed / 256));
+            const int candidate = std::min(95, 5 + static_cast<int>(processed / kEntryBatchSize));
             std::lock_guard lock(progressMutex);
             if (candidate <= reportedProgress)
             {
@@ -221,50 +223,82 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
                 QList<SnapshotEntry> directoryEntries;
                 QList<ScanWarning> directoryWarnings;
                 QList<DirectoryWork> discoveredDirectories;
+                QString directoryFailure;
                 try
                 {
                     checkCancelled(cancelled);
                     const QDir currentDirectory(directory.absolutePath);
-                    if (!currentDirectory.isReadable())
+                    if (!currentDirectory.exists())
                     {
-                        addWarning(directoryWarnings, directory.relativePath,
-                                   WarningOperation::Enumerate, WarningCategory::AccessDenied,
-                                   "The folder could not be read.");
+                        if (directory.relativePath.isEmpty())
+                        {
+                            directoryFailure = "The watched folder no longer exists.";
+                        }
+                        else
+                        {
+                            addWarning(directoryWarnings, directory.relativePath,
+                                       WarningOperation::Enumerate, WarningCategory::NotFound,
+                                       "The folder no longer exists.");
+                        }
+                    }
+                    else if (!currentDirectory.isReadable())
+                    {
+                        if (directory.relativePath.isEmpty())
+                        {
+                            directoryFailure = "The watched folder cannot be read.";
+                        }
+                        else
+                        {
+                            addWarning(directoryWarnings, directory.relativePath,
+                                       WarningOperation::Enumerate, WarningCategory::AccessDenied,
+                                       "The folder could not be read.");
+                        }
                     }
                     else
                     {
                         const QFileInfoList children = currentDirectory.entryInfoList(
                             QDir::NoDotAndDotDot | QDir::AllEntries | QDir::Hidden | QDir::System,
                             QDir::Name);
-                        for (const QFileInfo &info : children)
+                        for (qsizetype batchStart = 0; batchStart < children.size();
+                             batchStart += kEntryBatchSize)
                         {
                             checkCancelled(cancelled);
-                            const QString relativePath = normalizeRelativePath(
-                                QDir(request.root.displayPath).relativeFilePath(info.filePath()));
-                            const quint32 attributes = fileAttributes(info);
-                            const EntryType type = entryType(info, attributes);
-                            const bool isDirectory = type == EntryType::Directory;
-                            const IgnoreMatch match = matcher.testPath(relativePath, isDirectory);
-                            if (!match.included)
+                            const qsizetype batchEnd =
+                                std::min(children.size(), batchStart + kEntryBatchSize);
+                            for (qsizetype index = batchStart; index < batchEnd; ++index)
                             {
-                                if (isDirectory && !matcher.canPruneDirectory(relativePath))
+                                const QFileInfo &info = children.at(index);
+                                const QString relativePath =
+                                    normalizeRelativePath(QDir(request.root.displayPath)
+                                                              .relativeFilePath(info.filePath()));
+                                const quint32 attributes = fileAttributes(info);
+                                const EntryType type = entryType(info, attributes);
+                                const bool isDirectory = type == EntryType::Directory;
+                                const IgnoreMatch match =
+                                    matcher.testPath(relativePath, isDirectory);
+                                if (!match.included)
+                                {
+                                    if (isDirectory && !matcher.canPruneDirectory(relativePath))
+                                    {
+                                        discoveredDirectories.append(
+                                            {info.filePath(), relativePath});
+                                    }
+                                    continue;
+                                }
+                                if (!appendEntry(directoryEntries, info, relativePath, type,
+                                                 attributes))
+                                {
+                                    addWarning(directoryWarnings, relativePath,
+                                               WarningOperation::Stat, WarningCategory::Io,
+                                               "The file size could not be read.");
+                                    continue;
+                                }
+                                if (isDirectory)
                                 {
                                     discoveredDirectories.append({info.filePath(), relativePath});
                                 }
-                                continue;
+                                ++processedEntries;
                             }
-                            if (!appendEntry(directoryEntries, info, relativePath, type,
-                                             attributes))
-                            {
-                                addWarning(directoryWarnings, relativePath, WarningOperation::Stat,
-                                           WarningCategory::Io, "The file size could not be read.");
-                                continue;
-                            }
-                            if (isDirectory)
-                            {
-                                discoveredDirectories.append({info.filePath(), relativePath});
-                            }
-                            ++processedEntries;
                             reportProgress();
                         }
                     }
@@ -280,10 +314,24 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
                     failed = true;
                 }
 
+                try
+                {
+                    checkCancelled(cancelled);
+                }
+                catch (const ScanCancelled &)
+                {
+                    wasCancelled = true;
+                }
+
                 {
                     std::lock_guard lock(shared.mutex);
                     --shared.activeDirectories;
-                    if (!wasCancelled.load() && !failed.load())
+                    if (!directoryFailure.isEmpty())
+                    {
+                        shared.failure = directoryFailure;
+                        failed = true;
+                    }
+                    else if (!wasCancelled.load() && !failed.load())
                     {
                         shared.entries.append(directoryEntries);
                         shared.warnings.append(directoryWarnings);
@@ -331,10 +379,19 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
                   [&cancelled](const ScanWarning &left, const ScanWarning &right)
                   {
                       checkCancelled(cancelled);
-                      return left.path < right.path;
+                      if (left.path != right.path)
+                      {
+                          return left.path < right.path;
+                      }
+                      return left.operation < right.operation;
                   });
+        qsizetype summaryIndex = 0;
         for (const SnapshotEntry &entry : result.snapshot.entries)
         {
+            if ((summaryIndex++ % kEntryBatchSize) == 0)
+            {
+                checkCancelled(cancelled);
+            }
             if (entry.type == EntryType::File)
             {
                 ++result.snapshot.header.fileCount;
@@ -349,7 +406,8 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
                 ++result.snapshot.header.otherCount;
             }
         }
-        if (progress && !(cancelled && cancelled()))
+        checkCancelled(cancelled);
+        if (progress)
         {
             progress(100);
         }

@@ -83,6 +83,95 @@ class ScannerTest final : public QObject
         QVERIFY(result.error.isEmpty());
     }
 
+    void rootDisappearanceIsFatal()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        writeFile(temporaryDirectory.filePath("file.txt"), "data");
+
+        foldersnap::ScanRequest request;
+        request.rootId = foldersnap::createId();
+        request.displayTitle = "Missing root";
+        request.root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        request.directoryWorkerCount = 1;
+        bool removed = false;
+        const foldersnap::ScanResult result =
+            foldersnap::MetadataScanner::scan(request, {},
+                                              [&temporaryDirectory, &removed]
+                                              {
+                                                  if (!removed)
+                                                  {
+                                                      removed = temporaryDirectory.remove();
+                                                  }
+                                                  return false;
+                                              });
+
+        QVERIFY(removed);
+        QCOMPARE(result.error, QString("The watched folder no longer exists."));
+        QVERIFY(result.snapshot.header.scanWarnings.isEmpty());
+    }
+
+    void descendantDisappearanceBecomesWarning()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const QString descendant = temporaryDirectory.filePath("vanished");
+        QVERIFY(QDir().mkpath(descendant));
+        writeFile(QDir(descendant).filePath("file.txt"), "data");
+
+        foldersnap::ScanRequest request;
+        request.rootId = foldersnap::createId();
+        request.displayTitle = "Partial scan";
+        request.root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        request.directoryWorkerCount = 1;
+        int cancellationChecks = 0;
+        bool removed = false;
+        const foldersnap::ScanResult result =
+            foldersnap::MetadataScanner::scan(request, {},
+                                              [&]
+                                              {
+                                                  ++cancellationChecks;
+                                                  if (cancellationChecks == 3)
+                                                  {
+                                                      removed =
+                                                          QDir(descendant).removeRecursively();
+                                                  }
+                                                  return false;
+                                              });
+
+        QVERIFY(removed);
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QVERIFY(!result.cancelled);
+        QCOMPARE(result.snapshot.header.scanWarnings.size(), 1);
+        QCOMPARE(result.snapshot.header.scanWarnings.first().path, QString("vanished"));
+        QCOMPARE(result.snapshot.header.scanWarnings.first().operation,
+                 foldersnap::WarningOperation::Enumerate);
+        QCOMPARE(result.snapshot.header.scanWarnings.first().category,
+                 foldersnap::WarningCategory::NotFound);
+    }
+
+    void cancellationStopsFinalization()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        writeFile(temporaryDirectory.filePath("a.txt"), "a");
+        writeFile(temporaryDirectory.filePath("b.txt"), "b");
+        writeFile(temporaryDirectory.filePath("c.txt"), "c");
+
+        foldersnap::ScanRequest request;
+        request.rootId = foldersnap::createId();
+        request.displayTitle = "Finalization cancellation";
+        request.root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        request.directoryWorkerCount = 1;
+        int cancellationChecks = 0;
+        const foldersnap::ScanResult result = foldersnap::MetadataScanner::scan(
+            request, {}, [&cancellationChecks] { return ++cancellationChecks >= 5; });
+
+        QVERIFY(result.cancelled);
+        QVERIFY(result.error.isEmpty());
+        QVERIFY(cancellationChecks >= 5);
+    }
+
 #ifdef Q_OS_WIN
     void doesNotTraverseDirectoryJunctions()
     {
@@ -157,6 +246,36 @@ class ScannerTest final : public QObject
                  entryDescriptions(fourWorkers.snapshot.entries));
         QCOMPARE(singleWorker.snapshot.header.scanWarnings,
                  fourWorkers.snapshot.header.scanWarnings);
+    }
+
+    void scansUnicodeAndLongPaths()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        QStringList components;
+        for (int index = 0; index < 18; ++index)
+        {
+            components.append(QString("segment-%1").arg(index, 6, 10, QLatin1Char('0')));
+        }
+        const QString nestedPath = temporaryDirectory.filePath(components.join('/'));
+        QVERIFY2(QDir().mkpath(nestedPath), qPrintable(nestedPath));
+        const QString filePath = QDir(nestedPath).filePath(QString::fromUtf8("résumé-文件.txt"));
+        writeFile(filePath, "unicode");
+        QVERIFY(filePath.size() > 260);
+
+        foldersnap::ScanRequest request;
+        request.rootId = foldersnap::createId();
+        request.displayTitle = "Unicode and long path";
+        request.root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        const foldersnap::ScanResult result =
+            foldersnap::MetadataScanner::scan(request, {}, [] { return false; });
+
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(result.snapshot.header.fileCount, qint64(1));
+        QCOMPARE(result.snapshot.header.totalFileBytes, qint64(7));
+        QVERIFY(std::any_of(result.snapshot.entries.cbegin(), result.snapshot.entries.cend(),
+                            [](const foldersnap::SnapshotEntry &entry)
+                            { return entry.path.endsWith(QString::fromUtf8("résumé-文件.txt")); }));
     }
 
     void rejectsOutOfRangeWorkerCount()
