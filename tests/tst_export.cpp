@@ -32,6 +32,45 @@ QByteArray exportTemplate()
     }
     return file.readAll();
 }
+
+foldersnap::Snapshot largeSnapshot(int fileCount)
+{
+    foldersnap::Snapshot snapshot = fixtureSnapshot();
+    snapshot.header.displayTitle = QString::fromUtf8("Large 資料 export");
+    snapshot.header.fileCount = fileCount;
+    snapshot.header.directoryCount = 1;
+    snapshot.header.otherCount = 0;
+    snapshot.header.totalFileBytes =
+        static_cast<qint64>(fileCount) * (static_cast<qint64>(fileCount) + 1) / 2;
+    snapshot.header.scanWarnings.clear();
+    snapshot.entries.clear();
+    snapshot.entries.reserve(fileCount + 1);
+    snapshot.entries.append({"bulk", "bulk", foldersnap::EntryType::Directory});
+    for (int index = 0; index < fileCount; ++index)
+    {
+        const QString name = QString("bulk/file-%1-資料,quoted.txt").arg(index, 5, 10, QChar('0'));
+        snapshot.entries.append({name,
+                                 name,
+                                 foldersnap::EntryType::File,
+                                 static_cast<qint64>(index) + 1,
+                                 snapshot.header.completedAtUtc.nanoseconds,
+                                 0,
+                                 0,
+                                 {}});
+    }
+    snapshot.entriesSorted = true;
+    return snapshot;
+}
+
+QByteArray readAll(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        qFatal("Could not read test output.");
+    }
+    return file.readAll();
+}
 } // namespace
 
 class ExportTest final : public QObject
@@ -127,6 +166,8 @@ class ExportTest final : public QObject
         after.entries.last().size += 7;
         after.entries.last().modifiedNs += 1;
         after.header.totalFileBytes += 7;
+        const QByteArray encodedBefore = foldersnap::encodeSnapshot(before);
+        const QByteArray encodedAfter = foldersnap::encodeSnapshot(after);
         const foldersnap::DiffResult diff = foldersnap::DiffEngine::compare(before, after);
         QCOMPARE(diff.summary.modifiedCount, qint64(1));
 
@@ -142,6 +183,8 @@ class ExportTest final : public QObject
         const QByteArray csv = foldersnap::ExportBuilder::comparisonCsv(before, after, diff);
         QCOMPARE(csv.left(3), QByteArray::fromHex("efbbbf"));
         QVERIFY(csv.contains("modified,metadata,file,file,9007199254740993,9007199254741000"));
+        QCOMPARE(foldersnap::encodeSnapshot(before), encodedBefore);
+        QCOMPARE(foldersnap::encodeSnapshot(after), encodedAfter);
     }
 
     void exportJobLoadsSnapshotAndPublishesCsvAtomically()
@@ -220,6 +263,44 @@ class ExportTest final : public QObject
         QVERIFY(!result.cancelled);
         QVERIFY(result.error.contains("missing", Qt::CaseInsensitive));
         QVERIFY(!QFile::exists(destination));
+    }
+
+    void largeHtmlExportIsStandaloneAndLeavesStoredSnapshotUnchanged()
+    {
+        constexpr int kFileCount = 10000;
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.filePath("data"));
+        const foldersnap::Snapshot snapshot = largeSnapshot(kFileCount);
+        const foldersnap::SnapshotStore store(paths);
+        QVERIFY(store.saveSnapshot(snapshot) > 0);
+        const QByteArray payloadBefore = readAll(store.payloadPath(snapshot.header.snapshotId));
+        const QString destination = temporaryDirectory.filePath("large-report.html");
+
+        const foldersnap::ExportJobResult result =
+            foldersnap::ExportJob::run({paths,
+                                        snapshot.header.snapshotId,
+                                        {},
+                                        destination,
+                                        foldersnap::ExportFormat::Html,
+                                        exportTemplate()});
+
+        QVERIFY(result.succeeded);
+        QVERIFY(result.error.isEmpty());
+        const QByteArray html = readAll(destination);
+        QVERIFY(html.size() > 1024 * 1024);
+        QVERIFY(html.contains("\"reportType\":\"snapshot\""));
+        QVERIFY(html.contains("\"fileCount\":\"10000\""));
+        QVERIFY(html.contains(QString::fromUtf8("file-09999-資料,quoted.txt").toUtf8()));
+        QVERIFY(!html.contains("/* FOLDERSNAP_REPORT_DATA */"));
+        QVERIFY(!html.contains("http://"));
+        QVERIFY(!html.contains("https://"));
+        QVERIFY(!html.contains("<link"));
+        QVERIFY(!html.contains(" src="));
+        QCOMPARE(readAll(store.payloadPath(snapshot.header.snapshotId)), payloadBefore);
+        QCOMPARE(foldersnap::encodeSnapshot(store.loadSnapshot(snapshot.header.snapshotId)),
+                 foldersnap::encodeSnapshot(snapshot));
     }
 };
 

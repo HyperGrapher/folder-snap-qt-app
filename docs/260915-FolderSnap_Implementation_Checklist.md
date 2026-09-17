@@ -198,7 +198,7 @@ Exit: all non-export and non-cleanup core workflows operate on real local data w
 - [x] Implement UTF-8 CSV writers with RFC 4180 quoting and a documented Excel-compatible BOM choice.
 - [x] Run decode and export work off the GUI thread with cancellation and atomic final output.
 - [x] Connect per-snapshot and completed-comparison export actions, progress, and errors.
-- [ ] Test hostile strings, Unicode, quoting, missing payloads, offline operation, large reports, and immutability.
+- [x] Test hostile strings, Unicode, quoting, missing payloads, offline operation, large reports, and immutability.
 
 Exit: saved snapshots and completed comparisons export complete offline HTML and CSV reports without touching live files or history.
 

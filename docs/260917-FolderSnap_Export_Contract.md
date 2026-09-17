@@ -25,3 +25,8 @@ Injection escapes `<`, `>`, `&`, U+2028, and U+2029 before replacing that marker
 uses DOM text nodes for stored values, makes no network requests, and supports snapshot and
 comparison trees with debounced search, comparison filters, ancestor visibility, expansion, and
 deterministic sibling sorting.
+
+Export verification covers hostile script-like text, Unicode paths, CSV quoting, missing payloads,
+cancellation, a 10,000-file standalone report, and byte-for-byte preservation of stored snapshot
+payloads. The generated HTML contains no external resource references and requires no network
+access.
