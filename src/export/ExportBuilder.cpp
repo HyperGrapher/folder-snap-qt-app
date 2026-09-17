@@ -3,10 +3,12 @@
 #include <optional>
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonValue>
 #include <QStringList>
 
 #include "diff/ComparisonTree.h"
+#include "domain/DomainError.h"
 #include "domain/Timestamp.h"
 
 namespace foldersnap
@@ -15,6 +17,7 @@ namespace
 {
 constexpr int kExportSchemaVersion = 1;
 constexpr char kUtf8Bom[] = "\xEF\xBB\xBF";
+constexpr char kReportDataMarker[] = "/* FOLDERSNAP_REPORT_DATA */";
 
 QString entryTypeName(EntryType type)
 {
@@ -256,5 +259,24 @@ QByteArray ExportBuilder::comparisonCsv(const Snapshot &before, const Snapshot &
                            entry.kind == ChangeKind::ScopeDifference ? "true" : "false"});
     }
     return csv;
+}
+
+QByteArray ExportBuilder::htmlReport(const QJsonObject &dto, const QByteArray &templateHtml)
+{
+    const QByteArray marker(kReportDataMarker);
+    if (templateHtml.count(marker) != 1)
+    {
+        throw DomainError(ErrorCode::InvalidData,
+                          "The export template must contain exactly one data marker.");
+    }
+    QString json = QString::fromUtf8(QJsonDocument(dto).toJson(QJsonDocument::Compact));
+    json.replace('&', "\\u0026");
+    json.replace('<', "\\u003C");
+    json.replace('>', "\\u003E");
+    json.replace(QChar(0x2028), "\\u2028");
+    json.replace(QChar(0x2029), "\\u2029");
+    QByteArray report = templateHtml;
+    report.replace(marker, json.toUtf8());
+    return report;
 }
 } // namespace foldersnap

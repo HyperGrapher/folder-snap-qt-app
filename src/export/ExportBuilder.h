@@ -17,5 +17,7 @@ class ExportBuilder final
     [[nodiscard]] static QByteArray snapshotCsv(const Snapshot &snapshot);
     [[nodiscard]] static QByteArray comparisonCsv(const Snapshot &before, const Snapshot &after,
                                                   const DiffResult &diff);
+    [[nodiscard]] static QByteArray htmlReport(const QJsonObject &dto,
+                                               const QByteArray &templateHtml);
 };
 } // namespace foldersnap

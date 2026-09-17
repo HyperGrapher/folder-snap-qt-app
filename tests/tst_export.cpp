@@ -4,6 +4,7 @@
 #include <QtTest>
 
 #include "diff/DiffEngine.h"
+#include "domain/DomainError.h"
 #include "domain/JsonCodec.h"
 #include "export/ExportBuilder.h"
 
@@ -17,6 +18,16 @@ foldersnap::Snapshot fixtureSnapshot()
         qFatal("Could not open the snapshot fixture.");
     }
     return foldersnap::decodeSnapshot(fixture.readAll());
+}
+
+QByteArray exportTemplate()
+{
+    QFile file(QString(FOLDERSNAP_EXPORT_TEMPLATE));
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        qFatal("Could not open the export template.");
+    }
+    return file.readAll();
 }
 } // namespace
 
@@ -60,6 +71,47 @@ class ExportTest final : public QObject
         QVERIFY(csv.contains("\"target,\"\"quoted\"\"\nline\""));
         QVERIFY(csv.contains("9007199254740993"));
         QVERIFY(csv.endsWith("\r\n"));
+    }
+
+    void htmlInjectionEscapesScriptMarkupAndRemainsOffline()
+    {
+        foldersnap::Snapshot snapshot = fixtureSnapshot();
+        snapshot.header.displayTitle =
+            QString::fromUtf8("</script><script>alert('blocked')</script>&\xE2\x80\xA8line");
+        const QJsonObject dto = foldersnap::ExportBuilder::snapshotDto(snapshot);
+
+        const QByteArray html = foldersnap::ExportBuilder::htmlReport(dto, exportTemplate());
+
+        QVERIFY(!html.contains("/* FOLDERSNAP_REPORT_DATA */"));
+        QVERIFY(!html.contains("</script><script>alert"));
+        QVERIFY(html.contains("\\u003C/script\\u003E\\u003Cscript\\u003E"));
+        QVERIFY(html.contains("\\u0026\\u2028line"));
+        QVERIFY(!html.contains("http://"));
+        QVERIFY(!html.contains("https://"));
+        QVERIFY(!html.contains(".innerHTML"));
+        QVERIFY(html.contains("createDocumentFragment"));
+        QVERIFY(html.contains("textContent"));
+
+        const QByteArray opening = "<script id=\"foldersnap-data\" type=\"application/json\">";
+        const qsizetype jsonStart = html.indexOf(opening) + opening.size();
+        const qsizetype jsonEnd = html.indexOf("</script>", jsonStart);
+        QVERIFY(jsonStart >= opening.size());
+        QVERIFY(jsonEnd > jsonStart);
+        QJsonParseError parseError;
+        const QJsonDocument embedded =
+            QJsonDocument::fromJson(html.mid(jsonStart, jsonEnd - jsonStart), &parseError);
+        QCOMPARE(parseError.error, QJsonParseError::NoError);
+        QCOMPARE(embedded.object(), dto);
+    }
+
+    void htmlTemplateRequiresOneMarker()
+    {
+        const QJsonObject dto{{"schemaVersion", 1}, {"reportType", "snapshot"}};
+        QVERIFY_EXCEPTION_THROWN(foldersnap::ExportBuilder::htmlReport(dto, "<html></html>"),
+                                 foldersnap::DomainError);
+        const QByteArray duplicate = "/* FOLDERSNAP_REPORT_DATA *//* FOLDERSNAP_REPORT_DATA */";
+        QVERIFY_EXCEPTION_THROWN(foldersnap::ExportBuilder::htmlReport(dto, duplicate),
+                                 foldersnap::DomainError);
     }
 
     void comparisonDtoAndCsvContainBothSides()

@@ -12,4 +12,10 @@ Windows Excel compatibility, CRLF rows, and RFC 4180 quoting.
 
 DTO and CSV generation consumes immutable in-memory snapshots and comparison results. It does not
 read watched folders or modify snapshot payloads, history, configuration, or comparison selection.
-Template injection, background file writing, and UI wiring are implemented separately.
+Background file writing and UI wiring are implemented separately.
+
+The packaged standalone HTML template contains exactly one `/* FOLDERSNAP_REPORT_DATA */` marker.
+Injection escapes `<`, `>`, `&`, U+2028, and U+2029 before replacing that marker. Report rendering
+uses DOM text nodes for stored values, makes no network requests, and supports snapshot and
+comparison trees with debounced search, comparison filters, ancestor visibility, expansion, and
+deterministic sibling sorting.

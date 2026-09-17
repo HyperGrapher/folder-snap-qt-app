@@ -190,10 +190,10 @@ Exit: all non-export and non-cleanup core workflows operate on real local data w
 
 ## Phase 8 — Snapshot and comparison export
 
-- [ ] Create the versioned standalone `resources/snapshot-export-template.html` supporting snapshot and comparison DTOs.
-- [ ] Use safe JSON injection and DOM text APIs so stored paths cannot inject markup or script.
-- [ ] Implement offline multi-level tree rendering, search, filters, ancestor visibility, and sibling sorting.
-- [ ] Implement accessible Added/Deleted/Modified/warning row treatments for comparison reports.
+- [x] Create the versioned standalone `resources/snapshot-export-template.html` supporting snapshot and comparison DTOs.
+- [x] Use safe JSON injection and DOM text APIs so stored paths cannot inject markup or script.
+- [x] Implement offline multi-level tree rendering, search, filters, ancestor visibility, and sibling sorting.
+- [x] Implement accessible Added/Deleted/Modified/warning row treatments for comparison reports.
 - [x] Implement snapshot and comparison DTO builders with decimal-string sizes and ISO dates.
 - [x] Implement UTF-8 CSV writers with RFC 4180 quoting and a documented Excel-compatible BOM choice.
 - [ ] Run decode and export work off the GUI thread with cancellation and atomic final output.

@@ -114,6 +114,7 @@ qt_add_resources(
         resources/icons/maximize.svg
         resources/icons/minimize.svg
         resources/icons/restore.svg
+        resources/snapshot-export-template.html
 )
 qt_add_shaders(
     folder_snap_ui ambient_shaders
@@ -178,6 +179,11 @@ if(BUILD_TESTING)
         PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml"
     )
     add_test(NAME ui COMMAND tst_ui -platform offscreen)
+
+    target_compile_definitions(
+        tst_export
+        PRIVATE FOLDERSNAP_EXPORT_TEMPLATE="${CMAKE_CURRENT_SOURCE_DIR}/resources/snapshot-export-template.html"
+    )
 
     if(WIN32)
         qt_add_executable(
