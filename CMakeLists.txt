@@ -97,7 +97,9 @@ qt_add_qml_module(
     RESOURCE_PREFIX /qt/qml
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/FolderSnap"
     QML_FILES ${folder_snap_qml_files}
-    SOURCES src/AppState.h src/AppState.cpp
+    SOURCES
+        src/AppState.h src/AppState.cpp
+        src/application/ScanCoordinator.h src/application/ScanCoordinator.cpp
 )
 target_include_directories(folder_snap_ui PUBLIC src)
 target_link_libraries(folder_snap_ui PUBLIC folder_snap_core Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent)
@@ -160,6 +162,10 @@ if(BUILD_TESTING)
     qt_add_executable(tst_appstate tests/tst_appstate.cpp)
     target_link_libraries(tst_appstate PRIVATE folder_snap_ui Qt6::Test)
     add_test(NAME appstate COMMAND tst_appstate)
+
+    qt_add_executable(tst_scancoordinator tests/tst_scancoordinator.cpp)
+    target_link_libraries(tst_scancoordinator PRIVATE folder_snap_ui Qt6::Test)
+    add_test(NAME scancoordinator COMMAND tst_scancoordinator)
 
     qt_add_executable(tst_ui tests/quicktest.cpp)
     target_link_libraries(

@@ -5,23 +5,16 @@
 #include <QFutureWatcher>
 #include <QObject>
 #include <QStringList>
+#include <QTimer>
 #include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
+#include "application/ScanCoordinator.h"
 #include "domain/Configuration.h"
 #include "domain/Snapshot.h"
-#include "scanner/MetadataScanner.h"
-#include "storage/HistoryStore.h"
 #include "storage/StoragePaths.h"
-
-struct ScanJobResult
-{
-    foldersnap::SnapshotCommitResult commit;
-    QString rootId;
-    QString error;
-};
 
 struct ComparisonJobResult
 {
@@ -350,7 +343,11 @@ class AppState : public QObject
 
   private:
     void refreshModels();
-    void finishScan();
+    void requestSnapshot(const foldersnap::WatchedRoot &root, foldersnap::SnapshotTrigger trigger);
+    void finishScan(const foldersnap::ScanJobResult &result);
+    void failScan(const QString &rootId, const QString &error);
+    void updateCurrentScanState();
+    void evaluateSchedules();
     void finishComparison();
     void invalidateComparison();
     void saveConfiguration();
@@ -404,6 +401,7 @@ class AppState : public QObject
     bool m_launchAtStartup{false};
     bool m_notifyScheduledSuccess{false};
     int m_retention{50};
-    std::unique_ptr<QFutureWatcher<ScanJobResult>> m_scanWatcher;
+    std::unique_ptr<foldersnap::ScanCoordinator> m_scanCoordinator;
     std::unique_ptr<QFutureWatcher<ComparisonJobResult>> m_comparisonWatcher;
+    QTimer m_scheduleTimer;
 };

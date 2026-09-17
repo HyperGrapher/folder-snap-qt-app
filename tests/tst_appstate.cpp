@@ -2,9 +2,14 @@
 
 #include <QDir>
 #include <QFile>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QtTest>
+
+#include "paths/WindowsPaths.h"
+#include "storage/ConfigurationStore.h"
+#include "storage/StoragePaths.h"
 
 class AppStateTest final : public QObject
 {
@@ -74,6 +79,63 @@ class AppStateTest final : public QObject
             QCOMPARE(state.removedCount(), 0);
         }
         qunsetenv("FOLDERSNAP_DATA_DIR");
+    }
+
+    void runsOneCatchUpSnapshotForAnOverdueSchedule()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+
+        QFile file(watchedDirectory.filePath("scheduled.txt"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QVERIFY(file.write("scheduled content") > 0);
+        file.close();
+
+        const foldersnap::RootPath normalized =
+            foldersnap::normalizeRootPath(watchedDirectory.path());
+        foldersnap::WatchedRoot root;
+        root.rootId = foldersnap::createId();
+        root.displayName = "Scheduled folder";
+        root.path = normalized.displayPath;
+        root.normalizedPath = normalized.identityPath;
+        root.schedule.kind = foldersnap::ScheduleKind::Interval;
+        root.schedule.intervalHours = 1;
+        constexpr qint64 kTenHoursInNanoseconds = 10LL * 60LL * 60LL * 1000000000LL;
+        root.schedule.nextDueAtUtc = foldersnap::UtcTimestamp{
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() * 1000000 - kTenHoursInNanoseconds};
+
+        foldersnap::Configuration configuration;
+        configuration.roots.append(root);
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        foldersnap::ConfigurationStore(paths).saveConfiguration(configuration);
+
+        AppState state;
+        QTRY_COMPARE_WITH_TIMEOUT(state.snapshots().size(), 1, 5000);
+        QCOMPARE(state.snapshots().first().toMap().value("trigger").toString(),
+                 QString("Scheduled"));
+        QTest::qWait(50);
+        QCOMPARE(state.snapshots().size(), 1);
+
+        const QStringList scheduleOptions{
+            "Every 1 hour",   "Every 3 hours",         "Every 6 hours",         "Every 12 hours",
+            "Daily at 09:00", "Weekly · Monday 09:00", "Monthly · day 1, 09:00"};
+        for (const QString &schedule : scheduleOptions)
+        {
+            state.updateRoot("Scheduled folder", schedule, false);
+            QCOMPARE(state.currentRoot().value("schedule").toString(), schedule);
+        }
+
+        const foldersnap::Configuration persisted =
+            foldersnap::ConfigurationStore(paths).loadConfiguration().value;
+        QVERIFY(persisted.roots.first().schedule.nextDueAtUtc.has_value());
+        QVERIFY(*persisted.roots.first().schedule.nextDueAtUtc >
+                foldersnap::UtcTimestamp{QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() *
+                                         1000000});
     }
 };
 QTEST_GUILESS_MAIN(AppStateTest)

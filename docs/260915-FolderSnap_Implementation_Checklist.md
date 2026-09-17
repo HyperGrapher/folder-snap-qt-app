@@ -138,7 +138,7 @@ payloads; broader interruption simulation remains part of later integration work
 ## Phase 4 — Metadata scanner
 
 - [ ] Implement cancellable traversal with a default of four directory workers, a configurable ceiling of 32, and batches of 256.
-- [ ] Enforce two concurrent root scans globally and one active scan per root.
+- [x] Enforce two concurrent root scans globally and one active scan per root.
 - [x] Capture file, directory, reparse, and other metadata without reading file contents.
 - [x] Never follow reparse/symlink directories; capture link targets when possible.
 - [x] Apply ignore rules and mandatory data-directory protection correctly, including negation-safe traversal.
@@ -166,11 +166,11 @@ Exit: large comparisons remain responsive and return the documented classificati
 
 - [ ] Implement watched-folder add, duplicate rejection, rename, archive/unarchive, settings, and Explorer commands.
 - [ ] Offer an immediate first snapshot after folder registration.
-- [ ] Implement scan request orchestration, the two-scan limit, per-root coalescing, and Manual-before-Scheduled ordering.
+- [x] Implement scan request orchestration, the two-scan limit, per-root coalescing, and Manual-before-Scheduled ordering.
 - [ ] Expose bounded UI-facing progress, completion, warning, failure, and configuration signals.
-- [ ] Implement Manual, 1/3/6/12-hour, daily, weekly, and monthly schedules.
-- [ ] Implement local-time calendar calculation, UTC persistence, DST behavior, monthly clamping, missed-run collapse, and anchor preservation.
-- [ ] Implement clean cancellation and service shutdown.
+- [x] Implement Manual, 1/3/6/12-hour, daily, weekly, and monthly schedules.
+- [x] Implement local-time calendar calculation, UTC persistence, DST behavior, monthly clamping, missed-run collapse, and anchor preservation.
+- [x] Implement clean cancellation and service shutdown.
 - [ ] Add orchestration and schedule tests, including sleep/resume and archived roots.
 
 Exit: manual and scheduled snapshot work is reliable, cancellable, persisted, and correctly serialized.

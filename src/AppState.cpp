@@ -18,6 +18,7 @@
 #include "diff/ComparisonTree.h"
 #include "diff/DiffEngine.h"
 #include "domain/DomainError.h"
+#include "schedule/ScheduleCalculator.h"
 #include "storage/ConfigurationStore.h"
 #include "storage/HistoryStore.h"
 #include "storage/SnapshotStore.h"
@@ -89,17 +90,24 @@ QString scheduleName(const foldersnap::Schedule &schedule)
     switch (schedule.kind)
     {
     case foldersnap::ScheduleKind::Interval:
-        return QString("Every %1 hours").arg(schedule.intervalHours);
+        return schedule.intervalHours == 1 ? "Every 1 hour"
+                                           : QString("Every %1 hours").arg(schedule.intervalHours);
     case foldersnap::ScheduleKind::Daily:
         return QString("Daily at %1:%2")
             .arg(schedule.hour, 2, 10, QChar('0'))
             .arg(schedule.minute, 2, 10, QChar('0'));
     case foldersnap::ScheduleKind::Weekly:
-        return QString("Weekly at %1:%2")
-            .arg(schedule.hour, 2, 10, QChar('0'))
+        return QString("Weekly · %1 %2:%3")
+            .arg(QStringList{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+                             "Saturday"}
+                     .value(schedule.weekday),
+                 QString::number(schedule.hour).rightJustified(2, '0'))
             .arg(schedule.minute, 2, 10, QChar('0'));
     case foldersnap::ScheduleKind::Monthly:
-        return QString("Monthly · day %1").arg(schedule.dayOfMonth);
+        return QString("Monthly · day %1, %2:%3")
+            .arg(schedule.dayOfMonth)
+            .arg(schedule.hour, 2, 10, QChar('0'))
+            .arg(schedule.minute, 2, 10, QChar('0'));
     case foldersnap::ScheduleKind::Manual:
         return "Manual only";
     }
@@ -122,7 +130,7 @@ foldersnap::Schedule parseSchedule(const QString &text)
     else if (text.startsWith("Weekly"))
     {
         schedule.kind = foldersnap::ScheduleKind::Weekly;
-        schedule.weekday = 0;
+        schedule.weekday = 1;
         schedule.hour = 9;
     }
     else if (text.startsWith("Monthly"))
@@ -288,11 +296,18 @@ AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths()
     m_launchAtStartup = m_configuration.launchAtStartup;
     m_notifyScheduledSuccess = m_configuration.notifyScheduledSuccess;
     m_retention = m_configuration.defaultRetention;
-    m_scanWatcher = std::make_unique<QFutureWatcher<ScanJobResult>>(this);
+    m_scanCoordinator = std::make_unique<foldersnap::ScanCoordinator>(this);
     m_comparisonWatcher = std::make_unique<QFutureWatcher<ComparisonJobResult>>(this);
-    connect(m_scanWatcher.get(), &QFutureWatcher<ScanJobResult>::progressValueChanged, this,
-            [this](int value)
+    connect(m_scanCoordinator.get(), &foldersnap::ScanCoordinator::activeChanged, this,
+            [this](const QString &, bool) { updateCurrentScanState(); });
+    connect(m_scanCoordinator.get(), &foldersnap::ScanCoordinator::progressChanged, this,
+            [this](const QString &rootId, int value)
             {
+                const auto *root = currentConfigurationRoot();
+                if (!root || root->rootId != rootId)
+                {
+                    return;
+                }
                 if (m_scanProgress == value)
                 {
                     return;
@@ -300,11 +315,26 @@ AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths()
                 m_scanProgress = value;
                 emit scanProgressChanged();
             });
-    connect(m_scanWatcher.get(), &QFutureWatcher<ScanJobResult>::finished, this,
+    connect(m_scanCoordinator.get(), &foldersnap::ScanCoordinator::succeeded, this,
             &AppState::finishScan);
+    connect(m_scanCoordinator.get(), &foldersnap::ScanCoordinator::failed, this,
+            &AppState::failScan);
+    connect(m_scanCoordinator.get(), &foldersnap::ScanCoordinator::cancelled, this,
+            [this](const QString &rootId)
+            {
+                const auto *root = currentConfigurationRoot();
+                if (root && root->rootId == rootId)
+                {
+                    setToast("Snapshot cancelled. Your folder was not changed.");
+                }
+            });
     connect(m_comparisonWatcher.get(), &QFutureWatcher<ComparisonJobResult>::finished, this,
             &AppState::finishComparison);
+    m_scheduleTimer.setInterval(15000);
+    connect(&m_scheduleTimer, &QTimer::timeout, this, &AppState::evaluateSchedules);
+    m_scheduleTimer.start();
     refreshModels();
+    QTimer::singleShot(0, this, &AppState::evaluateSchedules);
 }
 
 AppState::~AppState() = default;
@@ -627,6 +657,7 @@ void AppState::chooseRoot(int index)
     emit rootIndexChanged();
     emit snapshotSearchChanged();
     refreshModels();
+    updateCurrentScanState();
 }
 
 void AppState::chooseSnapshot(const QString &snapshotId)
@@ -708,16 +739,22 @@ void AppState::toggleExpanded(const QString &path)
 void AppState::takeSnapshot()
 {
     const auto *root = currentConfigurationRoot();
-    if (!root || root->archived || m_scanning)
+    if (!root || root->archived)
     {
         return;
     }
+    requestSnapshot(*root, foldersnap::SnapshotTrigger::Manual);
+}
+
+void AppState::requestSnapshot(const foldersnap::WatchedRoot &root,
+                               foldersnap::SnapshotTrigger trigger)
+{
     foldersnap::ScanRequest request;
-    request.rootId = root->rootId;
-    request.displayTitle = root->displayName;
-    request.root = foldersnap::normalizeRootPath(root->path);
-    request.ignoreRules = root->ignoreRules;
-    request.trigger = foldersnap::SnapshotTrigger::Manual;
+    request.rootId = root.rootId;
+    request.displayTitle = root.displayName;
+    request.root = foldersnap::normalizeRootPath(root.path);
+    request.ignoreRules = root.ignoreRules;
+    request.trigger = trigger;
     try
     {
         request.protectedSubtree = foldersnap::protectedDataSubtree(
@@ -727,50 +764,25 @@ void AppState::takeSnapshot()
     {
         request.protectedSubtree.reset();
     }
-    setScanError({});
-    m_scanProgress = 0;
-    emit scanProgressChanged();
-    setScanning(true);
-    const foldersnap::StoragePaths paths = m_paths;
-    const int retention = root->retention;
-    m_scanWatcher->setFuture(QtConcurrent::run(
-        [request, paths, retention](QPromise<ScanJobResult> &promise)
-        {
-            ScanJobResult result;
-            result.rootId = request.rootId;
-            promise.setProgressRange(0, 100);
-            const foldersnap::ScanResult scan = foldersnap::MetadataScanner::scan(
-                request, [&promise](int value) { promise.setProgressValue(value); },
-                [&promise]() { return promise.isCanceled(); });
-            if (scan.cancelled || promise.isCanceled())
-            {
-                return;
-            }
-            if (!scan.error.isEmpty())
-            {
-                result.error = scan.error;
-                promise.addResult(result);
-                return;
-            }
-            try
-            {
-                result.commit =
-                    foldersnap::HistoryStore(paths).commitSnapshot(scan.snapshot, retention);
-                promise.setProgressValue(100);
-            }
-            catch (const foldersnap::DomainError &error)
-            {
-                result.error = error.message();
-            }
-            promise.addResult(result);
-        }));
+    if (const auto *current = currentConfigurationRoot(); current && current->rootId == root.rootId)
+    {
+        setScanError({});
+        m_scanProgress = 0;
+        emit scanProgressChanged();
+    }
+    foldersnap::ScanJobRequest job;
+    job.scan = std::move(request);
+    job.paths = m_paths;
+    job.retention = root.retention;
+    m_scanCoordinator->request(std::move(job));
 }
 
 void AppState::cancelScan()
 {
-    if (m_scanning && m_scanWatcher)
+    const auto *root = currentConfigurationRoot();
+    if (root && m_scanCoordinator)
     {
-        m_scanWatcher->cancel();
+        m_scanCoordinator->cancelRoot(root->rootId);
     }
 }
 
@@ -893,12 +905,20 @@ void AppState::updateRoot(const QString &name, const QString &schedule, bool arc
     }
     try
     {
+        foldersnap::Schedule updatedSchedule = parseSchedule(schedule);
+        foldersnap::Schedule comparableSchedule = root->schedule;
+        comparableSchedule.nextDueAtUtc.reset();
+        if (updatedSchedule == comparableSchedule)
+        {
+            updatedSchedule.nextDueAtUtc = root->schedule.nextDueAtUtc;
+        }
         root->displayName = name.trimmed();
-        root->schedule = parseSchedule(schedule);
+        root->schedule = updatedSchedule;
         root->archived = archived;
         foldersnap::validateConfiguration(m_configuration);
         saveConfiguration();
         refreshModels();
+        evaluateSchedules();
         setToast("Folder preferences saved.");
     }
     catch (const foldersnap::DomainError &error)
@@ -1057,37 +1077,100 @@ void AppState::refreshModels()
     emit ignoreRulesChanged();
 }
 
-void AppState::finishScan()
+void AppState::finishScan(const foldersnap::ScanJobResult &result)
 {
-    setScanning(false);
-    if (m_scanWatcher->future().isCanceled())
-    {
-        setToast("Snapshot cancelled. Your folder was not changed.");
-        return;
-    }
-    const ScanJobResult result = m_scanWatcher->result();
-    if (!result.error.isEmpty())
-    {
-        if (auto *root = configurationRoot(result.rootId))
-        {
-            root->lastScanError = result.error;
-            saveConfiguration();
-        }
-        setScanError(result.error);
-        return;
-    }
-    m_scanProgress = 100;
-    emit scanProgressChanged();
     if (auto *root = configurationRoot(result.rootId))
     {
         root->lastSnapshotUtc = result.commit.record.completedAtUtc;
         root->lastScanError.clear();
         saveConfiguration();
     }
+    const auto *current = currentConfigurationRoot();
+    const bool isCurrent = current && current->rootId == result.rootId;
+    if (isCurrent)
+    {
+        m_scanProgress = 100;
+        emit scanProgressChanged();
+        setScanError({});
+    }
     refreshModels();
-    setToast(QString("Snapshot saved · %1 files · %2")
-                 .arg(formatCount(result.commit.record.fileCount),
-                      formatBytes(result.commit.record.totalFileBytes)));
+    if (isCurrent &&
+        (result.trigger == foldersnap::SnapshotTrigger::Manual || m_notifyScheduledSuccess))
+    {
+        setToast(QString("Snapshot saved · %1 files · %2")
+                     .arg(formatCount(result.commit.record.fileCount),
+                          formatBytes(result.commit.record.totalFileBytes)));
+    }
+}
+
+void AppState::failScan(const QString &rootId, const QString &error)
+{
+    if (auto *root = configurationRoot(rootId))
+    {
+        root->lastScanError = error;
+        saveConfiguration();
+    }
+    const auto *current = currentConfigurationRoot();
+    if (current && current->rootId == rootId)
+    {
+        setScanError(error);
+    }
+}
+
+void AppState::updateCurrentScanState()
+{
+    const auto *root = currentConfigurationRoot();
+    setScanning(root && m_scanCoordinator && m_scanCoordinator->isActive(root->rootId));
+}
+
+void AppState::evaluateSchedules()
+{
+    const foldersnap::UtcTimestamp now{QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() *
+                                       1000000};
+    const QTimeZone timeZone = QTimeZone::systemTimeZone();
+    QStringList dueRootIds;
+    bool configurationChanged = false;
+    for (foldersnap::WatchedRoot &root : m_configuration.roots)
+    {
+        if (root.archived || root.schedule.kind == foldersnap::ScheduleKind::Manual)
+        {
+            continue;
+        }
+        try
+        {
+            const foldersnap::ScheduleDecision decision =
+                foldersnap::ScheduleCalculator::evaluate(root.schedule, now, timeZone);
+            if (root.schedule.nextDueAtUtc != decision.nextDueAtUtc)
+            {
+                root.schedule.nextDueAtUtc = decision.nextDueAtUtc;
+                configurationChanged = true;
+            }
+            if (decision.shouldRun)
+            {
+                dueRootIds.append(root.rootId);
+            }
+        }
+        catch (const foldersnap::DomainError &error)
+        {
+            if (root.lastScanError != error.message())
+            {
+                root.lastScanError = error.message();
+                configurationChanged = true;
+            }
+        }
+    }
+    if (configurationChanged)
+    {
+        saveConfiguration();
+    }
+    for (const QString &rootId : dueRootIds)
+    {
+        const auto *root = configurationRoot(rootId);
+        if (root && !root->archived)
+        {
+            requestSnapshot(*root, foldersnap::SnapshotTrigger::Scheduled);
+        }
+    }
 }
 
 void AppState::finishComparison()
