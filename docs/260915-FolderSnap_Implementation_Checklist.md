@@ -171,7 +171,7 @@ Exit: large comparisons remain responsive and return the documented classificati
 - [x] Implement Manual, 1/3/6/12-hour, daily, weekly, and monthly schedules.
 - [x] Implement local-time calendar calculation, UTC persistence, DST behavior, monthly clamping, missed-run collapse, and anchor preservation.
 - [x] Implement clean cancellation and service shutdown.
-- [ ] Add orchestration and schedule tests, including sleep/resume and archived roots.
+- [x] Add orchestration and schedule tests, including sleep/resume and archived roots.
 
 Exit: manual and scheduled snapshot work is reliable, cancellable, persisted, and correctly serialized.
 

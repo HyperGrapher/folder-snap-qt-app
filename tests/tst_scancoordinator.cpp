@@ -88,6 +88,45 @@ class ScanCoordinatorTest final : public QObject
                                                      foldersnap::SnapshotTrigger::Manual,
                                                      foldersnap::SnapshotTrigger::Scheduled}));
     }
+
+    void cancellingQueuedRootPreventsItsScan()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir firstDirectory;
+        QTemporaryDir secondDirectory;
+        QTemporaryDir queuedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(firstDirectory.isValid());
+        QVERIFY(secondDirectory.isValid());
+        QVERIFY(queuedDirectory.isValid());
+
+        const foldersnap::StoragePaths storage =
+            foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        const QString firstId = foldersnap::createId();
+        const QString secondId = foldersnap::createId();
+        const QString queuedId = foldersnap::createId();
+        foldersnap::ScanCoordinator coordinator;
+        QStringList completedRootIds;
+        connect(&coordinator, &foldersnap::ScanCoordinator::succeeded, this,
+                [&completedRootIds](const foldersnap::ScanJobResult &result)
+                { completedRootIds.append(result.rootId); });
+
+        coordinator.request(requestFor(firstId, firstDirectory.path(), storage,
+                                       foldersnap::SnapshotTrigger::Manual));
+        coordinator.request(requestFor(secondId, secondDirectory.path(), storage,
+                                       foldersnap::SnapshotTrigger::Manual));
+        coordinator.request(requestFor(queuedId, queuedDirectory.path(), storage,
+                                       foldersnap::SnapshotTrigger::Manual));
+        QCOMPARE(coordinator.activeCount(), 2);
+
+        coordinator.cancelRoot(queuedId);
+
+        QTRY_COMPARE_WITH_TIMEOUT(completedRootIds.size(), 2, 5000);
+        QVERIFY(completedRootIds.contains(firstId));
+        QVERIFY(completedRootIds.contains(secondId));
+        QVERIFY(!completedRootIds.contains(queuedId));
+        QCOMPARE(coordinator.activeCount(), 0);
+    }
 };
 
 QTEST_GUILESS_MAIN(ScanCoordinatorTest)

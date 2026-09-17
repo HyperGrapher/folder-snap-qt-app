@@ -137,6 +137,44 @@ class AppStateTest final : public QObject
                 foldersnap::UtcTimestamp{QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() *
                                          1000000});
     }
+
+    void doesNotScheduleArchivedRoots()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+
+        const foldersnap::RootPath normalized =
+            foldersnap::normalizeRootPath(watchedDirectory.path());
+        foldersnap::WatchedRoot root;
+        root.rootId = foldersnap::createId();
+        root.displayName = "Archived folder";
+        root.path = normalized.displayPath;
+        root.normalizedPath = normalized.identityPath;
+        root.archived = true;
+        root.schedule.kind = foldersnap::ScheduleKind::Interval;
+        root.schedule.intervalHours = 1;
+        const foldersnap::UtcTimestamp overdue{
+            QDateTime::currentDateTimeUtc().addDays(-1).toMSecsSinceEpoch() * 1000000};
+        root.schedule.nextDueAtUtc = overdue;
+
+        foldersnap::Configuration configuration;
+        configuration.roots.append(root);
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        foldersnap::ConfigurationStore(paths).saveConfiguration(configuration);
+
+        AppState state;
+        QTest::qWait(50);
+        QVERIFY(state.snapshots().isEmpty());
+
+        const foldersnap::Configuration persisted =
+            foldersnap::ConfigurationStore(paths).loadConfiguration().value;
+        QCOMPARE(persisted.roots.first().schedule.nextDueAtUtc, overdue);
+    }
 };
 QTEST_GUILESS_MAIN(AppStateTest)
 #include "tst_appstate.moc"
