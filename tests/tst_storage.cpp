@@ -92,6 +92,21 @@ class StorageTest final : public QObject
         QVERIFY_EXCEPTION_THROWN(foldersnap::readFileLimited(path, 2), foldersnap::DomainError);
     }
 
+    void cancelledAtomicReplacementPreservesExistingFile()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const QString path = temporaryDirectory.filePath("report.csv");
+        foldersnap::replaceFileAtomically(path, "existing");
+        int checkpoints = 0;
+
+        const bool replaced = foldersnap::replaceFileAtomically(
+            path, QByteArray(128 * 1024, 'x'), [&checkpoints]() { return ++checkpoints == 2; });
+
+        QVERIFY(!replaced);
+        QCOMPARE(foldersnap::readFileLimited(path, 8), QByteArray("existing"));
+    }
+
     void configurationRoundTripsAndMissingConfigurationUsesDefaults()
     {
         QTemporaryDir temporaryDirectory;

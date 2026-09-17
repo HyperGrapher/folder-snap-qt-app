@@ -61,7 +61,16 @@ QByteArray gzipCompress(const QByteArray &input)
     return output;
 }
 
-QByteArray gzipDecompress(const QByteArray &input, qsizetype maximumDecodedBytes)
+void checkCancelled(const SnapshotStore::CancellationCallback &cancelled)
+{
+    if (cancelled && cancelled())
+    {
+        throw DomainError(ErrorCode::Cancelled, "Snapshot loading was cancelled.");
+    }
+}
+
+QByteArray gzipDecompress(const QByteArray &input, qsizetype maximumDecodedBytes,
+                          const SnapshotStore::CancellationCallback &cancelled)
 {
     z_stream stream{};
     if (inflateInit2(&stream, 15 + 16) != Z_OK)
@@ -75,6 +84,7 @@ QByteArray gzipDecompress(const QByteArray &input, qsizetype maximumDecodedBytes
     int result = Z_OK;
     while (result != Z_STREAM_END)
     {
+        checkCancelled(cancelled);
         char buffer[kCompressionBufferBytes];
         stream.next_out = reinterpret_cast<Bytef *>(buffer);
         stream.avail_out = sizeof(buffer);
@@ -154,8 +164,10 @@ qint64 SnapshotStore::saveSnapshot(const Snapshot &snapshot) const
     return compressed.size();
 }
 
-Snapshot SnapshotStore::loadSnapshot(const QString &snapshotId) const
+Snapshot SnapshotStore::loadSnapshot(const QString &snapshotId,
+                                     const CancellationCallback &cancelled) const
 {
+    checkCancelled(cancelled);
     const QString path = payloadPath(snapshotId);
     if (!QFileInfo::exists(path))
     {
@@ -163,7 +175,10 @@ Snapshot SnapshotStore::loadSnapshot(const QString &snapshotId) const
                           QString("Snapshot payload is missing: %1").arg(snapshotId));
     }
     const QByteArray compressed = readFileLimited(path, kMaximumCompressedSnapshotBytes);
-    const Snapshot snapshot = decodeSnapshot(gzipDecompress(compressed, m_maximumDecodedBytes));
+    checkCancelled(cancelled);
+    const Snapshot snapshot =
+        decodeSnapshot(gzipDecompress(compressed, m_maximumDecodedBytes, cancelled));
+    checkCancelled(cancelled);
     if (snapshot.header.snapshotId != snapshotId)
     {
         throw DomainError(ErrorCode::InvalidData,

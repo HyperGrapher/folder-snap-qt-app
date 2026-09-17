@@ -196,7 +196,7 @@ Exit: all non-export and non-cleanup core workflows operate on real local data w
 - [x] Implement accessible Added/Deleted/Modified/warning row treatments for comparison reports.
 - [x] Implement snapshot and comparison DTO builders with decimal-string sizes and ISO dates.
 - [x] Implement UTF-8 CSV writers with RFC 4180 quoting and a documented Excel-compatible BOM choice.
-- [ ] Run decode and export work off the GUI thread with cancellation and atomic final output.
+- [x] Run decode and export work off the GUI thread with cancellation and atomic final output.
 - [ ] Connect per-snapshot and completed-comparison export actions, progress, and errors.
 - [ ] Test hostile strings, Unicode, quoting, missing payloads, offline operation, large reports, and immutability.
 

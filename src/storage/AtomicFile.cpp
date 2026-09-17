@@ -1,5 +1,7 @@
 #include "storage/AtomicFile.h"
 
+#include <algorithm>
+
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -13,6 +15,8 @@ namespace foldersnap
 {
 namespace
 {
+constexpr qsizetype kWriteChunkBytes = 64 * 1024;
+
 [[noreturn]] void fileError(const QString &action, const QString &path, const QString &detail)
 {
     throw DomainError(ErrorCode::Io, QString("Could not %1 '%2': %3").arg(action, path, detail));
@@ -55,6 +59,16 @@ QByteArray readFileLimited(const QString &path, qsizetype maximumBytes)
 
 void replaceFileAtomically(const QString &path, const QByteArray &contents)
 {
+    static_cast<void>(replaceFileAtomically(path, contents, {}));
+}
+
+bool replaceFileAtomically(const QString &path, const QByteArray &contents,
+                           const std::function<bool()> &cancelled)
+{
+    if (cancelled && cancelled())
+    {
+        return false;
+    }
     const QFileInfo fileInfo(path);
     createDirectory(fileInfo.absolutePath());
 
@@ -64,15 +78,32 @@ void replaceFileAtomically(const QString &path, const QByteArray &contents)
     {
         fileError("open for replacement", path, file.errorString());
     }
-    if (file.write(contents) != contents.size())
+    qsizetype offset = 0;
+    while (offset < contents.size())
+    {
+        if (cancelled && cancelled())
+        {
+            file.cancelWriting();
+            return false;
+        }
+        const qsizetype bytesToWrite = std::min(kWriteChunkBytes, contents.size() - offset);
+        if (file.write(contents.constData() + offset, bytesToWrite) != bytesToWrite)
+        {
+            file.cancelWriting();
+            fileError("write", path, file.errorString());
+        }
+        offset += bytesToWrite;
+    }
+    if (cancelled && cancelled())
     {
         file.cancelWriting();
-        fileError("write", path, file.errorString());
+        return false;
     }
     if (!file.commit())
     {
         fileError("replace", path, file.errorString());
     }
+    return true;
 }
 
 QString preserveCorruptFile(const QString &path, const StoragePaths &paths)

@@ -1,12 +1,15 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QTemporaryDir>
 #include <QtTest>
 
+#include "application/ExportJob.h"
 #include "diff/DiffEngine.h"
 #include "domain/DomainError.h"
 #include "domain/JsonCodec.h"
 #include "export/ExportBuilder.h"
+#include "storage/SnapshotStore.h"
 
 namespace
 {
@@ -139,6 +142,84 @@ class ExportTest final : public QObject
         const QByteArray csv = foldersnap::ExportBuilder::comparisonCsv(before, after, diff);
         QCOMPARE(csv.left(3), QByteArray::fromHex("efbbbf"));
         QVERIFY(csv.contains("modified,metadata,file,file,9007199254740993,9007199254741000"));
+    }
+
+    void exportJobLoadsSnapshotAndPublishesCsvAtomically()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.filePath("data"));
+        const foldersnap::Snapshot snapshot = fixtureSnapshot();
+        const foldersnap::SnapshotStore store(paths);
+        QVERIFY(store.saveSnapshot(snapshot) > 0);
+
+        const QString destination = temporaryDirectory.filePath("reports/snapshot.csv");
+        const foldersnap::ExportJobResult result =
+            foldersnap::ExportJob::run({paths,
+                                        snapshot.header.snapshotId,
+                                        {},
+                                        destination,
+                                        foldersnap::ExportFormat::Csv,
+                                        {}});
+
+        QVERIFY(result.succeeded);
+        QVERIFY(!result.cancelled);
+        QVERIFY(result.error.isEmpty());
+        QVERIFY(result.bytesWritten > 3);
+        QFile output(destination);
+        QVERIFY(output.open(QIODevice::ReadOnly));
+        QCOMPARE(output.read(3), QByteArray::fromHex("efbbbf"));
+    }
+
+    void exportJobCancellationDoesNotReplaceExistingFile()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.filePath("data"));
+        const foldersnap::Snapshot snapshot = fixtureSnapshot();
+        const foldersnap::SnapshotStore store(paths);
+        QVERIFY(store.saveSnapshot(snapshot) > 0);
+
+        const QString destination = temporaryDirectory.filePath("snapshot.csv");
+        QFile existing(destination);
+        QVERIFY(existing.open(QIODevice::WriteOnly));
+        QCOMPARE(existing.write("keep"), qint64(4));
+        existing.close();
+
+        int checkpoints = 0;
+        const foldersnap::ExportJobResult result = foldersnap::ExportJob::run(
+            {paths, snapshot.header.snapshotId, {}, destination, foldersnap::ExportFormat::Csv, {}},
+            [&checkpoints]() { return ++checkpoints == 3; });
+
+        QVERIFY(!result.succeeded);
+        QVERIFY(result.cancelled);
+        QVERIFY(result.error.isEmpty());
+        QVERIFY(existing.open(QIODevice::ReadOnly));
+        QCOMPARE(existing.readAll(), QByteArray("keep"));
+    }
+
+    void exportJobReportsMissingPayloadWithoutPartialOutput()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.filePath("data"));
+        const QString destination = temporaryDirectory.filePath("missing.html");
+
+        const foldersnap::ExportJobResult result =
+            foldersnap::ExportJob::run({paths,
+                                        "99999999-9999-4999-8999-999999999999",
+                                        {},
+                                        destination,
+                                        foldersnap::ExportFormat::Html,
+                                        exportTemplate()});
+
+        QVERIFY(!result.succeeded);
+        QVERIFY(!result.cancelled);
+        QVERIFY(result.error.contains("missing", Qt::CaseInsensitive));
+        QVERIFY(!QFile::exists(destination));
     }
 };
 

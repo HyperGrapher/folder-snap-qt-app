@@ -39,6 +39,7 @@ add_library(folder_snap_core STATIC
     src/diff/DiffEngine.h src/diff/DiffEngine.cpp
     src/diff/ComparisonTree.h src/diff/ComparisonTree.cpp
     src/export/ExportBuilder.h src/export/ExportBuilder.cpp
+    src/application/ExportJob.h src/application/ExportJob.cpp
     src/storage/AtomicFile.h src/storage/AtomicFile.cpp
     src/storage/ConfigurationStore.h src/storage/ConfigurationStore.cpp
     src/storage/StoragePaths.h src/storage/StoragePaths.cpp
@@ -101,6 +102,7 @@ qt_add_qml_module(
     SOURCES
         src/AppState.h src/AppState.cpp
         src/application/ScanCoordinator.h src/application/ScanCoordinator.cpp
+        src/application/ExportCoordinator.h src/application/ExportCoordinator.cpp
 )
 target_include_directories(folder_snap_ui PUBLIC src)
 target_link_libraries(folder_snap_ui PUBLIC folder_snap_core Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent)
@@ -168,6 +170,12 @@ if(BUILD_TESTING)
     qt_add_executable(tst_scancoordinator tests/tst_scancoordinator.cpp)
     target_link_libraries(tst_scancoordinator PRIVATE folder_snap_ui Qt6::Test)
     add_test(NAME scancoordinator COMMAND tst_scancoordinator)
+
+    qt_add_executable(tst_exportcoordinator tests/tst_exportcoordinator.cpp)
+    target_link_libraries(tst_exportcoordinator PRIVATE folder_snap_ui Qt6::Test)
+    target_compile_definitions(tst_exportcoordinator PRIVATE
+        FOLDERSNAP_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    add_test(NAME exportcoordinator COMMAND tst_exportcoordinator)
 
     qt_add_executable(tst_ui tests/quicktest.cpp)
     target_link_libraries(

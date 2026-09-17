@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <optional>
 
 #include <QList>
@@ -24,5 +25,6 @@ struct ComparisonTreeRow
 };
 
 [[nodiscard]] QList<ComparisonTreeRow>
-buildComparisonTree(const Snapshot &before, const Snapshot &after, const DiffResult &diff);
+buildComparisonTree(const Snapshot &before, const Snapshot &after, const DiffResult &diff,
+                    const std::function<bool()> &cancelled = {});
 } // namespace foldersnap

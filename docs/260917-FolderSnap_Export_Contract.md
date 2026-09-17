@@ -12,7 +12,11 @@ Windows Excel compatibility, CRLF rows, and RFC 4180 quoting.
 
 DTO and CSV generation consumes immutable in-memory snapshots and comparison results. It does not
 read watched folders or modify snapshot payloads, history, configuration, or comparison selection.
-Background file writing and UI wiring are implemented separately.
+`ExportCoordinator` loads and decodes payloads, computes comparisons, and builds reports on a
+worker thread. Cancellation is checked during decode and large report loops. The completed report
+is written through a cancellable `QSaveFile` replacement, so cancellation or failure leaves an
+existing destination unchanged and does not expose a partial report. UI actions are wired
+separately.
 
 The packaged standalone HTML template contains exactly one `/* FOLDERSNAP_REPORT_DATA */` marker.
 Injection escapes `<`, `>`, `&`, U+2028, and U+2029 before replacing that marker. Report rendering

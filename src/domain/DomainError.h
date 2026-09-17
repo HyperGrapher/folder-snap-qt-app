@@ -15,7 +15,8 @@ enum class ErrorCode
     UnsupportedSchema,
     SizeLimit,
     Io,
-    MissingPayload
+    MissingPayload,
+    Cancelled
 };
 
 // Core entry points throw this value; application job boundaries translate it to UI errors.

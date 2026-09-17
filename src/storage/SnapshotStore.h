@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <QtTypes>
 
 #include "domain/Snapshot.h"
@@ -14,6 +16,8 @@ inline constexpr qsizetype kMaximumDecodedSnapshotBytes = 1024 * 1024 * 1024;
 class SnapshotStore final
 {
   public:
+    using CancellationCallback = std::function<bool()>;
+
     explicit SnapshotStore(StoragePaths paths,
                            qsizetype maximumDecodedBytes = kMaximumDecodedSnapshotBytes);
 
@@ -22,7 +26,8 @@ class SnapshotStore final
     [[nodiscard]] QString tombstonePath(const QString &snapshotId) const;
     [[nodiscard]] bool hasPayload(const QString &snapshotId) const;
     [[nodiscard]] qint64 saveSnapshot(const Snapshot &snapshot) const;
-    [[nodiscard]] Snapshot loadSnapshot(const QString &snapshotId) const;
+    [[nodiscard]] Snapshot loadSnapshot(const QString &snapshotId,
+                                        const CancellationCallback &cancelled = {}) const;
     [[nodiscard]] bool movePayloadToTombstone(const QString &snapshotId) const;
     void restoreTombstone(const QString &snapshotId) const;
     void removeTombstone(const QString &snapshotId) const;

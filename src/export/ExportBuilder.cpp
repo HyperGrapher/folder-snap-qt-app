@@ -19,6 +19,14 @@ constexpr int kExportSchemaVersion = 1;
 constexpr char kUtf8Bom[] = "\xEF\xBB\xBF";
 constexpr char kReportDataMarker[] = "/* FOLDERSNAP_REPORT_DATA */";
 
+void checkCancelled(const ExportBuilder::CancellationCallback &cancelled)
+{
+    if (cancelled && cancelled())
+    {
+        throw DomainError(ErrorCode::Cancelled, "Export was cancelled.");
+    }
+}
+
 QString entryTypeName(EntryType type)
 {
     switch (type)
@@ -140,13 +148,20 @@ QString optionalModified(const std::optional<SnapshotEntry> &entry)
 }
 } // namespace
 
-QJsonObject ExportBuilder::snapshotDto(const Snapshot &snapshot)
+QJsonObject ExportBuilder::snapshotDto(const Snapshot &snapshot,
+                                       const CancellationCallback &cancelled)
 {
     validateSnapshot(snapshot);
+    checkCancelled(cancelled);
     const SnapshotHeader &header = snapshot.header;
     QJsonArray entries;
+    qsizetype entryIndex = 0;
     for (const SnapshotEntry &entry : snapshot.entries)
     {
+        if ((entryIndex++ % 256) == 0)
+        {
+            checkCancelled(cancelled);
+        }
         entries.append(entryDto(entry));
     }
     QJsonArray warnings;
@@ -177,13 +192,19 @@ QJsonObject ExportBuilder::snapshotDto(const Snapshot &snapshot)
 }
 
 QJsonObject ExportBuilder::comparisonDto(const Snapshot &before, const Snapshot &after,
-                                         const DiffResult &diff)
+                                         const DiffResult &diff,
+                                         const CancellationCallback &cancelled)
 {
     validateSnapshot(before);
     validateSnapshot(after);
     QJsonArray entries;
+    qsizetype entryIndex = 0;
     for (const DiffEntry &entry : diff.entries)
     {
+        if ((entryIndex++ % 256) == 0)
+        {
+            checkCancelled(cancelled);
+        }
         const SnapshotEntry *display = entry.after ? &*entry.after : &*entry.before;
         entries.append(QJsonObject{{"path", entry.path},
                                    {"displayPath", display->displayPath},
@@ -193,7 +214,7 @@ QJsonObject ExportBuilder::comparisonDto(const Snapshot &before, const Snapshot 
                                    {"after", optionalEntryDto(entry.after)}});
     }
     QJsonObject folderSizes;
-    for (const ComparisonTreeRow &row : buildComparisonTree(before, after, diff))
+    for (const ComparisonTreeRow &row : buildComparisonTree(before, after, diff, cancelled))
     {
         if (row.folder)
         {
@@ -220,14 +241,21 @@ QJsonObject ExportBuilder::comparisonDto(const Snapshot &before, const Snapshot 
             {"folderSizes", folderSizes}};
 }
 
-QByteArray ExportBuilder::snapshotCsv(const Snapshot &snapshot)
+QByteArray ExportBuilder::snapshotCsv(const Snapshot &snapshot,
+                                      const CancellationCallback &cancelled)
 {
     validateSnapshot(snapshot);
+    checkCancelled(cancelled);
     QByteArray csv(kUtf8Bom, 3);
     appendCsvRow(csv, {"path", "displayPath", "type", "sizeBytes", "createdAtUtc", "modifiedAtUtc",
                        "attributes", "linkTarget"});
+    qsizetype entryIndex = 0;
     for (const SnapshotEntry &entry : snapshot.entries)
     {
+        if ((entryIndex++ % 256) == 0)
+        {
+            checkCancelled(cancelled);
+        }
         appendCsvRow(csv, {entry.path, entry.displayPath, entryTypeName(entry.type),
                            QString::number(entry.size), timestampText(entry.createdNs),
                            timestampText(entry.modifiedNs), QString::number(entry.attributes),
@@ -237,17 +265,24 @@ QByteArray ExportBuilder::snapshotCsv(const Snapshot &snapshot)
 }
 
 QByteArray ExportBuilder::comparisonCsv(const Snapshot &before, const Snapshot &after,
-                                        const DiffResult &diff)
+                                        const DiffResult &diff,
+                                        const CancellationCallback &cancelled)
 {
     validateSnapshot(before);
     validateSnapshot(after);
+    checkCancelled(cancelled);
     QByteArray csv(kUtf8Bom, 3);
     appendCsvRow(csv,
                  {"path", "displayPath", "change", "subtype", "beforeType", "afterType",
                   "beforeSizeBytes", "afterSizeBytes", "beforeCreatedAtUtc", "afterCreatedAtUtc",
                   "beforeModifiedAtUtc", "afterModifiedAtUtc", "uncertain", "scopeDifference"});
+    qsizetype entryIndex = 0;
     for (const DiffEntry &entry : diff.entries)
     {
+        if ((entryIndex++ % 256) == 0)
+        {
+            checkCancelled(cancelled);
+        }
         const SnapshotEntry *display = entry.after ? &*entry.after : &*entry.before;
         appendCsvRow(csv, {entry.path, display->displayPath, changeName(entry.kind),
                            modificationName(entry.modification), optionalType(entry.before),

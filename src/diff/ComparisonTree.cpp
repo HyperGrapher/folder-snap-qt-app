@@ -5,6 +5,8 @@
 #include <QHash>
 #include <QSet>
 
+#include "domain/DomainError.h"
+
 namespace foldersnap
 {
 namespace
@@ -21,11 +23,25 @@ QString parentPath(const QString &path)
     return separator < 0 ? QString{} : path.left(separator);
 }
 
-QHash<QString, qint64> recursiveSizes(const Snapshot &snapshot)
+void checkCancelled(const std::function<bool()> &cancelled)
+{
+    if (cancelled && cancelled())
+    {
+        throw DomainError(ErrorCode::Cancelled, "Export was cancelled.");
+    }
+}
+
+QHash<QString, qint64> recursiveSizes(const Snapshot &snapshot,
+                                      const std::function<bool()> &cancelled)
 {
     QHash<QString, qint64> sizes;
+    qsizetype index = 0;
     for (const SnapshotEntry &entry : snapshot.entries)
     {
+        if ((index++ % 256) == 0)
+        {
+            checkCancelled(cancelled);
+        }
         if (entry.type != EntryType::File)
         {
             continue;
@@ -121,10 +137,11 @@ qint64 fileBytes(const std::optional<SnapshotEntry> &entry)
 } // namespace
 
 QList<ComparisonTreeRow> buildComparisonTree(const Snapshot &before, const Snapshot &after,
-                                             const DiffResult &diff)
+                                             const DiffResult &diff,
+                                             const std::function<bool()> &cancelled)
 {
-    const QHash<QString, qint64> beforeSizes = recursiveSizes(before);
-    const QHash<QString, qint64> afterSizes = recursiveSizes(after);
+    const QHash<QString, qint64> beforeSizes = recursiveSizes(before, cancelled);
+    const QHash<QString, qint64> afterSizes = recursiveSizes(after, cancelled);
     QHash<QString, ProjectionNode> nodes;
     QHash<QString, QList<QString>> children;
 
@@ -144,8 +161,13 @@ QList<ComparisonTreeRow> buildComparisonTree(const Snapshot &before, const Snaps
         children[parentPath(path)].append(path);
     };
 
+    qsizetype entryIndex = 0;
     for (const DiffEntry &entry : diff.entries)
     {
+        if ((entryIndex++ % 256) == 0)
+        {
+            checkCancelled(cancelled);
+        }
         if (!isOrdinaryChange(entry.kind))
         {
             continue;
@@ -190,6 +212,7 @@ QList<ComparisonTreeRow> buildComparisonTree(const Snapshot &before, const Snaps
 
     for (auto iterator = children.begin(); iterator != children.end(); ++iterator)
     {
+        checkCancelled(cancelled);
         std::sort(iterator.value().begin(), iterator.value().end(),
                   [&nodes](const QString &leftPath, const QString &rightPath)
                   {
@@ -211,6 +234,7 @@ QList<ComparisonTreeRow> buildComparisonTree(const Snapshot &before, const Snaps
     QList<ComparisonTreeRow> rows;
     const auto appendChildren = [&](const auto &self, const QString &parent) -> void
     {
+        checkCancelled(cancelled);
         for (const QString &path : children.value(parent))
         {
             rows.append(nodes[path].row);
