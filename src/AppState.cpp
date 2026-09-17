@@ -175,6 +175,7 @@ QVariantMap mapForRoot(const foldersnap::WatchedRoot &root, const QList<HistoryR
     result["path"] = root.path;
     result["archived"] = root.archived;
     result["schedule"] = scheduleName(root.schedule);
+    result["retention"] = root.retention;
     result["snapshots"] = history.size();
     result["color"] = QStringList{"#94e6c6", "#b7a8e6", "#e9c387", "#8396a5"}[colorIndex % 4];
     result["note"] = root.archived       ? "History kept, watching paused"
@@ -438,23 +439,6 @@ void AppState::setDetailId(const QString &detailId)
     }
     m_detailId = detailId;
     emit detailIdChanged();
-}
-
-void AppState::setIgnoreRules(const QString &rules)
-{
-    if (m_ignoreRules == rules)
-    {
-        return;
-    }
-    m_ignoreRules = rules;
-    emit ignoreRulesChanged();
-    auto *root = currentConfigurationRoot();
-    if (!root)
-    {
-        return;
-    }
-    root->ignoreRules = rules.split('\n', Qt::SkipEmptyParts);
-    saveConfiguration();
 }
 
 void AppState::setCleanupSelection(const QVariantList &selection)
@@ -896,27 +880,45 @@ void AppState::addFolder(const QUrl &folderUrl)
     }
 }
 
-void AppState::updateRoot(const QString &name, const QString &schedule, bool archived)
+void AppState::updateRoot(const QString &name, const QString &schedule, int retention,
+                          const QString &ignoreRules, bool archived)
 {
-    auto *root = currentConfigurationRoot();
+    const auto *root = currentConfigurationRoot();
     if (!root)
     {
         return;
     }
     try
     {
+        const QString rootId = root->rootId;
+        foldersnap::Configuration updatedConfiguration = m_configuration;
+        auto updatedRoot = std::find_if(
+            updatedConfiguration.roots.begin(), updatedConfiguration.roots.end(),
+            [&rootId](const foldersnap::WatchedRoot &item) { return item.rootId == rootId; });
+        if (updatedRoot == updatedConfiguration.roots.end())
+        {
+            return;
+        }
         foldersnap::Schedule updatedSchedule = parseSchedule(schedule);
-        foldersnap::Schedule comparableSchedule = root->schedule;
+        foldersnap::Schedule comparableSchedule = updatedRoot->schedule;
         comparableSchedule.nextDueAtUtc.reset();
         if (updatedSchedule == comparableSchedule)
         {
-            updatedSchedule.nextDueAtUtc = root->schedule.nextDueAtUtc;
+            updatedSchedule.nextDueAtUtc = updatedRoot->schedule.nextDueAtUtc;
         }
-        root->displayName = name.trimmed();
-        root->schedule = updatedSchedule;
-        root->archived = archived;
-        foldersnap::validateConfiguration(m_configuration);
-        saveConfiguration();
+        const bool becameArchived = !updatedRoot->archived && archived;
+        updatedRoot->displayName = name.trimmed();
+        updatedRoot->schedule = updatedSchedule;
+        updatedRoot->retention = retention;
+        updatedRoot->ignoreRules = ignoreRules.split('\n', Qt::SkipEmptyParts);
+        updatedRoot->archived = archived;
+        foldersnap::validateConfiguration(updatedConfiguration);
+        foldersnap::ConfigurationStore(m_paths).saveConfiguration(updatedConfiguration);
+        m_configuration = std::move(updatedConfiguration);
+        if (becameArchived)
+        {
+            m_scanCoordinator->cancelRoot(rootId);
+        }
         refreshModels();
         evaluateSchedules();
         setToast("Folder preferences saved.");

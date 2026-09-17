@@ -81,6 +81,51 @@ class AppStateTest final : public QObject
         qunsetenv("FOLDERSNAP_DATA_DIR");
     }
 
+    void managesWatchedFolderPreferencesAtomically()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+
+        AppState state;
+        state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
+        QCOMPARE(state.roots().size(), 1);
+        QCOMPARE(state.selectedSection(), AppState::Section::Folders);
+        QVERIFY(state.toast().contains("Take a snapshot"));
+
+        state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
+        QCOMPARE(state.roots().size(), 1);
+        QCOMPARE(state.toast(), QString("That folder is already being watched."));
+
+        state.updateRoot("Renamed folder", "Every 3 hours", 25, "cache/\n*.tmp", true);
+        QCOMPARE(state.currentRoot().value("name").toString(), QString("Renamed folder"));
+        QCOMPARE(state.currentRoot().value("schedule").toString(), QString("Every 3 hours"));
+        QCOMPARE(state.currentRoot().value("retention").toInt(), 25);
+        QVERIFY(state.currentRoot().value("archived").toBool());
+        QCOMPARE(state.ignoreRules(), QString("cache/\n*.tmp"));
+
+        state.updateRoot({}, "Manual only", 42, {}, false);
+        QCOMPARE(state.currentRoot().value("name").toString(), QString("Renamed folder"));
+        QCOMPARE(state.currentRoot().value("retention").toInt(), 25);
+        QVERIFY(state.currentRoot().value("archived").toBool());
+
+        state.updateRoot("Renamed folder", "Manual only", 100, "cache/", false);
+        QVERIFY(!state.currentRoot().value("archived").toBool());
+        QCOMPARE(state.currentRoot().value("retention").toInt(), 100);
+
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        const foldersnap::WatchedRoot persisted =
+            foldersnap::ConfigurationStore(paths).loadConfiguration().value.roots.first();
+        QCOMPARE(persisted.displayName, QString("Renamed folder"));
+        QCOMPARE(persisted.retention, 100);
+        QCOMPARE(persisted.ignoreRules, QStringList{"cache/"});
+        QVERIFY(!persisted.archived);
+    }
+
     void runsOneCatchUpSnapshotForAnOverdueSchedule()
     {
         QTemporaryDir dataDirectory;
@@ -126,7 +171,7 @@ class AppStateTest final : public QObject
             "Daily at 09:00", "Weekly · Monday 09:00", "Monthly · day 1, 09:00"};
         for (const QString &schedule : scheduleOptions)
         {
-            state.updateRoot("Scheduled folder", schedule, false);
+            state.updateRoot("Scheduled folder", schedule, 50, {}, false);
             QCOMPARE(state.currentRoot().value("schedule").toString(), schedule);
         }
 

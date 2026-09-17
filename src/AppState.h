@@ -80,7 +80,7 @@ class AppState : public QObject
     Q_PROPERTY(QString sheet READ sheet WRITE setSheet NOTIFY sheetChanged)
     Q_PROPERTY(QString toast READ toast WRITE setToast NOTIFY toastChanged)
     Q_PROPERTY(QString detailId READ detailId WRITE setDetailId NOTIFY detailIdChanged)
-    Q_PROPERTY(QString ignoreRules READ ignoreRules WRITE setIgnoreRules NOTIFY ignoreRulesChanged)
+    Q_PROPERTY(QString ignoreRules READ ignoreRules NOTIFY ignoreRulesChanged)
     Q_PROPERTY(QVariantList cleanupSelection READ cleanupSelection WRITE setCleanupSelection NOTIFY
                    cleanupChanged)
     Q_PROPERTY(QVariantList cleanupCandidates READ cleanupCandidates NOTIFY comparisonChanged)
@@ -293,7 +293,6 @@ class AppState : public QObject
     void setSheet(const QString &sheet);
     void setToast(const QString &toast);
     void setDetailId(const QString &detailId);
-    void setIgnoreRules(const QString &rules);
     void setCleanupSelection(const QVariantList &selection);
     void setCleanupReviewed(bool reviewed);
     void setCleanupResult(const QString &result);
@@ -312,7 +311,8 @@ class AppState : public QObject
     Q_INVOKABLE void openSheet(const QString &kind);
     Q_INVOKABLE void openCurrentFolder();
     Q_INVOKABLE void addFolder(const QUrl &folderUrl);
-    Q_INVOKABLE void updateRoot(const QString &name, const QString &schedule, bool archived);
+    Q_INVOKABLE void updateRoot(const QString &name, const QString &schedule, int retention,
+                                const QString &ignoreRules, bool archived);
     Q_INVOKABLE void toggleCleanup(const QString &path);
     Q_INVOKABLE void saveDescription(const QString &description);
     Q_INVOKABLE void deleteSelectedSnapshot();

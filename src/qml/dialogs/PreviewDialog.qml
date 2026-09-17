@@ -152,6 +152,20 @@ Dialog {
                     currentIndex: Math.max(0, model.indexOf(dialog.appState.currentRoot.schedule))
                 }
             }
+            RowLayout {
+                visible: dialog.kind === "folder"
+                Layout.fillWidth: true
+                LabelText {
+                    text: "History retention"
+                    Layout.fillWidth: true
+                }
+                SelectBox {
+                    id: retentionInput
+                    implicitWidth: 200
+                    model: ["10 snapshots", "25 snapshots", "50 snapshots", "100 snapshots", "Unlimited"]
+                    currentIndex: Math.max(0, [10, 25, 50, 100, 0].indexOf(dialog.appState.currentRoot.retention))
+                }
+            }
             LabelText {
                 visible: dialog.kind === "folder"
                 text: "EXCLUSIONS · ONE RULE PER LINE"
@@ -479,8 +493,7 @@ Dialog {
                         return;
                     }
                     if (dialog.kind === "folder") {
-                        dialog.appState.updateRoot(nameInput.text, scheduleInput.currentText, archiveInput.checked);
-                        dialog.appState.ignoreRules = ignoreInput.text;
+                        dialog.appState.updateRoot(nameInput.text, scheduleInput.currentText, [10, 25, 50, 100, 0][retentionInput.currentIndex], ignoreInput.text, archiveInput.checked);
                     }
                     if (dialog.kind === "clear")
                         dialog.appState.clearSelectedRootHistory();
