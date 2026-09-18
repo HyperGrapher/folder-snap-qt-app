@@ -86,7 +86,12 @@ class AppState : public QObject
     Q_PROPERTY(QString ignoreRules READ ignoreRules NOTIFY ignoreRulesChanged)
     Q_PROPERTY(QVariantList cleanupSelection READ cleanupSelection WRITE setCleanupSelection NOTIFY
                    cleanupChanged)
-    Q_PROPERTY(QVariantList cleanupCandidates READ cleanupCandidates NOTIFY comparisonChanged)
+    Q_PROPERTY(QVariantList cleanupCandidates READ cleanupCandidates NOTIFY cleanupChanged)
+    Q_PROPERTY(
+        QVariantList visibleCleanupCandidates READ visibleCleanupCandidates NOTIFY cleanupChanged)
+    Q_PROPERTY(
+        QString cleanupSearch READ cleanupSearch WRITE setCleanupSearch NOTIFY cleanupChanged)
+    Q_PROPERTY(QString cleanupSelectedSize READ cleanupSelectedSize NOTIFY cleanupChanged)
     Q_PROPERTY(
         bool cleanupReviewed READ cleanupReviewed WRITE setCleanupReviewed NOTIFY cleanupChanged)
     Q_PROPERTY(
@@ -265,6 +270,12 @@ class AppState : public QObject
         return m_cleanupSelection;
     }
     [[nodiscard]] QVariantList cleanupCandidates() const;
+    [[nodiscard]] QVariantList visibleCleanupCandidates() const;
+    [[nodiscard]] QString cleanupSearch() const
+    {
+        return m_cleanupSearch;
+    }
+    [[nodiscard]] QString cleanupSelectedSize() const;
     [[nodiscard]] bool cleanupReviewed() const
     {
         return m_cleanupReviewed;
@@ -305,6 +316,7 @@ class AppState : public QObject
     void setToast(const QString &toast);
     void setDetailId(const QString &detailId);
     void setCleanupSelection(const QVariantList &selection);
+    void setCleanupSearch(const QString &search);
     void setCleanupReviewed(bool reviewed);
     void setCleanupResult(const QString &result);
     void setCloseToTray(bool enabled);
@@ -328,6 +340,7 @@ class AppState : public QObject
     Q_INVOKABLE void updateRoot(const QString &name, const QString &schedule, int retention,
                                 const QString &ignoreRules, bool archived);
     Q_INVOKABLE void toggleCleanup(const QString &path);
+    Q_INVOKABLE QString cleanupSelectionState(const QString &path) const;
     Q_INVOKABLE void saveDescription(const QString &description);
     Q_INVOKABLE void deleteSelectedSnapshot();
     Q_INVOKABLE void clearSelectedRootHistory();
@@ -421,6 +434,7 @@ class AppState : public QObject
     QString m_detailId;
     QString m_ignoreRules;
     QVariantList m_cleanupSelection;
+    QString m_cleanupSearch;
     bool m_cleanupReviewed{false};
     QString m_cleanupResult;
     bool m_closeToTray{true};

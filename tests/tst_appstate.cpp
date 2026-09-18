@@ -70,6 +70,15 @@ class AppStateTest final : public QObject
             QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
             QVERIFY(file.write("hello, FolderSnap") > 0);
             file.close();
+            QVERIFY(QDir().mkpath(watchedDirectory.filePath("added/nested")));
+            QFile addedFile(watchedDirectory.filePath("added/one.txt"));
+            QVERIFY(addedFile.open(QIODevice::WriteOnly));
+            QCOMPARE(addedFile.write("one"), qint64(3));
+            addedFile.close();
+            QFile nestedFile(watchedDirectory.filePath("added/nested/two.txt"));
+            QVERIFY(nestedFile.open(QIODevice::WriteOnly));
+            QCOMPARE(nestedFile.write("three"), qint64(5));
+            nestedFile.close();
 
             state.takeSnapshot();
             QTRY_VERIFY_WITH_TIMEOUT(!state.scanning(), 5000);
@@ -92,8 +101,36 @@ class AppStateTest final : public QObject
             state.startComparison();
             QTRY_VERIFY_WITH_TIMEOUT(state.comparisonReady(), 5000);
             QCOMPARE(state.modifiedCount(), 1);
-            QCOMPARE(state.addedCount(), 0);
+            QCOMPARE(state.addedCount(), 4);
             QCOMPARE(state.removedCount(), 0);
+
+            const QVariantList cleanupCandidates = state.cleanupCandidates();
+            QCOMPARE(cleanupCandidates.size(), 4);
+            for (const QVariant &candidate : cleanupCandidates)
+            {
+                QCOMPARE(candidate.toMap().value("status").toString(), QString("Added"));
+            }
+            state.openSheet("cleanup");
+            QVERIFY(state.cleanupSelection().isEmpty());
+            QCOMPARE(state.cleanupSelectedSize(), QString("0 B"));
+            state.toggleCleanup("added");
+            QCOMPARE(state.cleanupSelection().size(), 4);
+            QCOMPARE(state.cleanupSelectedSize(), QString("8 B"));
+            QCOMPARE(state.cleanupSelectionState("added"), QString("checked"));
+            state.toggleCleanup("added/one.txt");
+            QCOMPARE(state.cleanupSelection().size(), 2);
+            QCOMPARE(state.cleanupSelectedSize(), QString("5 B"));
+            QCOMPARE(state.cleanupSelectionState("added"), QString("partial"));
+            QCOMPARE(state.cleanupSelectionState("added/nested"), QString("checked"));
+            state.setCleanupSearch("two.txt");
+            QCOMPARE(state.visibleCleanupCandidates().size(), 3);
+            QCOMPARE(state.cleanupSelection().size(), 2);
+            state.setCleanupSearch("not-present");
+            QVERIFY(state.visibleCleanupCandidates().isEmpty());
+            QCOMPARE(state.cleanupSelection().size(), 2);
+            state.openSheet("cleanup");
+            QVERIFY(state.cleanupSelection().isEmpty());
+            QVERIFY(state.cleanupSearch().isEmpty());
 
             const QString snapshotExport = dataDirectory.filePath("snapshot-report.csv");
             state.setDetailId(snapshots.at(0).toMap().value("id").toString());

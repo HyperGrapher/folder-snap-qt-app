@@ -19,6 +19,7 @@ Item {
             snapshot: "M3 7 L7 7 L9 4 L15 4 L17 7 L21 7 L21 20 L3 20 Z M16 13 A4 4 0 1 0 8 13 A4 4 0 1 0 16 13",
             clock: "M21 12 A9 9 0 1 0 3 12 A9 9 0 1 0 21 12 M12 6 L12 12 L16 14",
             plus: "M12 4 L12 20 M4 12 L20 12",
+            minus: "M5 12 L19 12",
             arrow: "M4 12 L20 12 M14 6 L20 12 L14 18",
             chevron: "M9 5 L16 12 L9 19",
             down: "M5 9 L12 16 L19 9",

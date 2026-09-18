@@ -452,9 +452,19 @@ Dialog {
             visible: dialog.kind === "cleanup"
             Layout.fillWidth: true
             spacing: 10
+            SearchField {
+                id: cleanupSearchInput
+                objectName: "cleanupSearchInput"
+                Layout.fillWidth: true
+                leftPadding: 12
+                placeholderText: "Filter added files and folders"
+                text: dialog.appState.cleanupSearch
+                onTextChanged: dialog.appState.cleanupSearch = text
+                Accessible.name: "Filter cleanup candidates"
+            }
             RowLayout {
                 LabelText {
-                    text: dialog.appState.cleanupSelection.length + " items selected"
+                    text: dialog.appState.cleanupSelection.length + " items selected · " + dialog.appState.cleanupSelectedSize
                     font.weight: Font.DemiBold
                     Layout.fillWidth: true
                 }
@@ -471,35 +481,39 @@ Dialog {
                 }
             }
             Repeater {
-                model: dialog.appState.cleanupCandidates
+                model: dialog.appState.visibleCleanupCandidates
                 CheckBox {
                     id: candidate
                     required property var modelData
                     Layout.fillWidth: true
                     implicitHeight: 44
-                    checked: dialog.appState.cleanupSelection.includes(modelData.path)
+                    tristate: true
+                    checkState: modelData.selectionState === "checked" ? Qt.Checked : modelData.selectionState === "partial" ? Qt.PartiallyChecked : Qt.Unchecked
+                    nextCheckState: function () {
+                        return checkState === Qt.Checked ? Qt.Unchecked : Qt.Checked;
+                    }
                     text: modelData.name
-                    Accessible.name: text
-                    onToggled: dialog.appState.toggleCleanup(modelData.path)
+                    Accessible.name: (modelData.folder ? "Folder " : "File ") + modelData.path
+                    onClicked: dialog.appState.toggleCleanup(modelData.path)
                     indicator: Rectangle {
-                        x: 10
+                        x: 10 + candidate.modelData.depth * 16
                         y: 13
                         width: 18
                         height: 18
                         radius: 4
-                        color: candidate.checked ? Theme.accent : "transparent"
+                        color: candidate.checkState === Qt.Checked ? Theme.accent : candidate.checkState === Qt.PartiallyChecked ? "#668b7e" : "transparent"
                         border.color: candidate.visualFocus ? Theme.text : "#648273"
                         Glyph {
                             anchors.centerIn: parent
-                            name: "check"
-                            visible: candidate.checked
+                            name: candidate.checkState === Qt.PartiallyChecked ? "minus" : "check"
+                            visible: candidate.checkState !== Qt.Unchecked
                             color: "#183b2f"
                             font.pixelSize: 12
                         }
                     }
                     contentItem: LabelText {
                         text: candidate.text + "   ·   " + candidate.modelData.after
-                        leftPadding: 40
+                        leftPadding: 40 + candidate.modelData.depth * 16
                         font.pixelSize: 12
                     }
                     background: Rectangle {
@@ -507,6 +521,13 @@ Dialog {
                         color: candidate.hovered ? "#2d3b3a" : "#202e30"
                     }
                 }
+            }
+            BodyText {
+                visible: dialog.appState.visibleCleanupCandidates.length === 0
+                Layout.fillWidth: true
+                text: dialog.appState.cleanupSearch === "" ? "There are no definite Added entries to clean up." : "No added entries match this filter. Your selection is unchanged."
+                color: Theme.muted
+                font.pixelSize: 11
             }
             Panel {
                 Layout.fillWidth: true

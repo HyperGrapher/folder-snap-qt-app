@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QLocale>
 #include <QPromise>
 #include <QSet>
@@ -108,6 +109,16 @@ QString exportPath(const QUrl &destination, foldersnap::ExportFormat format)
         path += format == foldersnap::ExportFormat::Html ? ".html" : ".csv";
     }
     return path;
+}
+
+QSet<QString> stringSet(const QVariantList &values)
+{
+    QSet<QString> result;
+    for (const QVariant &value : values)
+    {
+        result.insert(value.toString());
+    }
+    return result;
 }
 
 QString triggerName(foldersnap::SnapshotTrigger trigger)
@@ -299,6 +310,8 @@ ComparisonJobResult compareSnapshots(const foldersnap::StoragePaths &paths, cons
             row["status"] = treeRow.change ? changeStatus(*treeRow.change) : QString{};
             row["before"] = treeRow.hasBeforeSize ? formatBytes(treeRow.beforeBytes) : QString("—");
             row["after"] = treeRow.hasAfterSize ? formatBytes(treeRow.afterBytes) : QString("—");
+            row["beforeBytes"] = treeRow.hasBeforeSize ? QVariant(treeRow.beforeBytes) : QVariant{};
+            row["afterBytes"] = treeRow.hasAfterSize ? QVariant(treeRow.afterBytes) : QVariant{};
             result.changes.append(row);
         }
     }
@@ -510,7 +523,95 @@ void AppState::setDetailId(const QString &detailId)
 
 void AppState::setCleanupSelection(const QVariantList &selection)
 {
-    m_cleanupSelection = selection;
+    const QVariantList candidates = cleanupCandidates();
+    QSet<QString> candidatePaths;
+    QSet<QString> folderPaths;
+    for (const QVariant &candidate : candidates)
+    {
+        const QVariantMap row = candidate.toMap();
+        const QString path = row.value("path").toString();
+        candidatePaths.insert(path);
+        if (row.value("folder").toBool())
+        {
+            folderPaths.insert(path);
+        }
+    }
+
+    QSet<QString> selectedPaths;
+    for (const QVariant &value : selection)
+    {
+        const QString path = value.toString();
+        if (candidatePaths.contains(path))
+        {
+            selectedPaths.insert(path);
+        }
+    }
+
+    QHash<QString, QStringList> children;
+    for (const QString &candidatePath : std::as_const(candidatePaths))
+    {
+        QString parent = candidatePath;
+        while (parent.contains('/'))
+        {
+            parent = parent.left(parent.lastIndexOf('/'));
+            if (folderPaths.contains(parent))
+            {
+                children[parent].append(candidatePath);
+                break;
+            }
+        }
+    }
+    for (auto iterator = candidates.crbegin(); iterator != candidates.crend(); ++iterator)
+    {
+        const QVariantMap candidate = iterator->toMap();
+        if (!candidate.value("folder").toBool())
+        {
+            continue;
+        }
+        const QString folderPath = candidate.value("path").toString();
+        const QStringList childPaths = children.value(folderPath);
+        if (childPaths.isEmpty())
+        {
+            continue;
+        }
+        const bool allChildrenSelected = std::all_of(childPaths.cbegin(), childPaths.cend(),
+                                                     [&selectedPaths](const QString &path)
+                                                     { return selectedPaths.contains(path); });
+        if (allChildrenSelected)
+        {
+            selectedPaths.insert(folderPath);
+        }
+        else
+        {
+            selectedPaths.remove(folderPath);
+        }
+    }
+
+    QVariantList normalized;
+    for (const QVariant &candidate : candidates)
+    {
+        const QString path = candidate.toMap().value("path").toString();
+        if (selectedPaths.contains(path))
+        {
+            normalized.append(path);
+        }
+    }
+    if (m_cleanupSelection == normalized)
+    {
+        return;
+    }
+    m_cleanupSelection = normalized;
+    m_cleanupReviewed = false;
+    emit cleanupChanged();
+}
+
+void AppState::setCleanupSearch(const QString &search)
+{
+    if (m_cleanupSearch == search)
+    {
+        return;
+    }
+    m_cleanupSearch = search;
     emit cleanupChanged();
 }
 
@@ -685,15 +786,102 @@ QString AppState::netSize() const
 
 QVariantList AppState::cleanupCandidates() const
 {
+    const QSet<QString> selectedPaths = stringSet(m_cleanupSelection);
+    QSet<QString> partiallySelectedPaths;
+    for (const QString &selectedPath : selectedPaths)
+    {
+        QString parent = selectedPath;
+        while (parent.contains('/'))
+        {
+            parent = parent.left(parent.lastIndexOf('/'));
+            partiallySelectedPaths.insert(parent);
+        }
+    }
+
     QVariantList result;
     for (const QVariant &value : m_changes)
     {
         if (value.toMap().value("status") == "Added")
         {
-            result.append(value);
+            QVariantMap candidate = value.toMap();
+            const QString path = candidate.value("path").toString();
+            candidate["selectionState"] = selectedPaths.contains(path)            ? "checked"
+                                          : partiallySelectedPaths.contains(path) ? "partial"
+                                                                                  : "unchecked";
+            result.append(candidate);
         }
     }
     return result;
+}
+
+QVariantList AppState::visibleCleanupCandidates() const
+{
+    const QVariantList candidates = cleanupCandidates();
+    const QString query = m_cleanupSearch.trimmed().toLower();
+    if (query.isEmpty())
+    {
+        return candidates;
+    }
+
+    QSet<QString> visiblePaths;
+    for (const QVariant &value : candidates)
+    {
+        const QString path = value.toMap().value("path").toString();
+        if (!path.toLower().contains(query))
+        {
+            continue;
+        }
+        visiblePaths.insert(path);
+        QString parent = path;
+        while (parent.contains('/'))
+        {
+            parent = parent.left(parent.lastIndexOf('/'));
+            visiblePaths.insert(parent);
+        }
+    }
+
+    QVariantList visible;
+    for (const QVariant &value : candidates)
+    {
+        if (visiblePaths.contains(value.toMap().value("path").toString()))
+        {
+            visible.append(value);
+        }
+    }
+    return visible;
+}
+
+QString AppState::cleanupSelectedSize() const
+{
+    const QSet<QString> selectedPaths = stringSet(m_cleanupSelection);
+    qint64 selectedBytes = 0;
+    for (const QVariant &value : cleanupCandidates())
+    {
+        const QVariantMap candidate = value.toMap();
+        if (!candidate.value("folder").toBool() &&
+            selectedPaths.contains(candidate.value("path").toString()))
+        {
+            selectedBytes += candidate.value("afterBytes").toLongLong();
+        }
+    }
+    return formatBytes(selectedBytes);
+}
+
+QString AppState::cleanupSelectionState(const QString &path) const
+{
+    const QSet<QString> selectedPaths = stringSet(m_cleanupSelection);
+    if (selectedPaths.contains(path))
+    {
+        return "checked";
+    }
+    for (const QString &selectedPath : selectedPaths)
+    {
+        if (selectedPath.startsWith(path + '/'))
+        {
+            return "partial";
+        }
+    }
+    return "unchecked";
 }
 
 void AppState::chooseRoot(int index)
@@ -942,6 +1130,7 @@ void AppState::openSheet(const QString &kind)
         emit detailIdChanged();
     }
     m_cleanupSelection.clear();
+    m_cleanupSearch.clear();
     m_cleanupReviewed = false;
     m_cleanupResult.clear();
     emit cleanupChanged();
@@ -1072,17 +1261,43 @@ void AppState::updateRoot(const QString &name, const QString &schedule, int rete
 
 void AppState::toggleCleanup(const QString &path)
 {
-    QVariantList selection = m_cleanupSelection;
-    for (int index = 0; index < selection.size(); ++index)
+    const QVariantList candidates = cleanupCandidates();
+    bool isCandidate = false;
+    for (const QVariant &candidate : candidates)
     {
-        if (selection[index].toString() == path)
+        if (candidate.toMap().value("path").toString() == path)
         {
-            selection.removeAt(index);
-            setCleanupSelection(selection);
-            return;
+            isCandidate = true;
+            break;
         }
     }
-    selection.append(path);
+    if (!isCandidate)
+    {
+        return;
+    }
+
+    QSet<QString> selectedPaths = stringSet(m_cleanupSelection);
+    const bool shouldRemove = selectedPaths.contains(path);
+    for (const QVariant &candidate : candidates)
+    {
+        const QString candidatePath = candidate.toMap().value("path").toString();
+        if (candidatePath == path || candidatePath.startsWith(path + '/'))
+        {
+            if (shouldRemove)
+            {
+                selectedPaths.remove(candidatePath);
+            }
+            else
+            {
+                selectedPaths.insert(candidatePath);
+            }
+        }
+    }
+    QVariantList selection;
+    for (const QString &selectedPath : std::as_const(selectedPaths))
+    {
+        selection.append(selectedPath);
+    }
     setCleanupSelection(selection);
 }
 

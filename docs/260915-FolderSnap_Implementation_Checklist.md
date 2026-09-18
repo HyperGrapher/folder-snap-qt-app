@@ -204,8 +204,8 @@ Exit: saved snapshots and completed comparisons export complete offline HTML and
 
 ## Phase 9 — Safe cleanup to Recycle Bin
 
-- [ ] Build cleanup candidates only from definite Added entries and begin with nothing selected.
-- [ ] Implement hierarchical selection, descendant propagation, indeterminate parents, persistent selection through filtering, and byte totals.
+- [x] Build cleanup candidates only from definite Added entries and begin with nothing selected.
+- [x] Implement hierarchical selection, descendant propagation, indeterminate parents, persistent selection through filtering, and byte totals.
 - [ ] Implement containment, reparse-ancestor, live-type, metadata, link-target, and untracked-directory-content preflight checks.
 - [ ] Propagate blocked descendants to selected parent directories.
 - [ ] Present Ready, Blocked, and Already Missing results before explicit confirmation.
