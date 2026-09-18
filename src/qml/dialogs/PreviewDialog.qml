@@ -531,9 +531,17 @@ Dialog {
                             font.pixelSize: 12
                         }
                     }
+                    Glyph {
+                        objectName: "cleanupCandidateTypeIcon"
+                        x: 34 + candidate.modelData.depth * 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: candidate.modelData.folder ? "folder" : "file"
+                        color: candidate.modelData.folder ? Theme.warning : Theme.muted
+                        font.pixelSize: 14
+                    }
                     contentItem: LabelText {
-                        text: candidate.text + "   ·   " + candidate.modelData.after
-                        leftPadding: 40 + candidate.modelData.depth * 16
+                        text: candidate.text + "   ·   " + (candidate.modelData.folder ? "Total " : "") + candidate.modelData.after
+                        leftPadding: 60 + candidate.modelData.depth * 16
                         font.pixelSize: 12
                     }
                     background: Rectangle {

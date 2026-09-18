@@ -1,5 +1,7 @@
 #include "AppState.h"
 
+#include <algorithm>
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -110,6 +112,12 @@ class AppStateTest final : public QObject
             {
                 QCOMPARE(candidate.toMap().value("status").toString(), QString("Added"));
             }
+            const auto addedFolder = std::find_if(
+                cleanupCandidates.cbegin(), cleanupCandidates.cend(), [](const QVariant &candidate)
+                { return candidate.toMap().value("path").toString() == "added"; });
+            QVERIFY(addedFolder != cleanupCandidates.cend());
+            QVERIFY(addedFolder->toMap().value("folder").toBool());
+            QCOMPARE(addedFolder->toMap().value("after").toString(), QString("8 B"));
             state.openSheet("cleanup");
             QVERIFY(state.cleanupSelection().isEmpty());
             QCOMPARE(state.cleanupSelectedSize(), QString("0 B"));
