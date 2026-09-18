@@ -162,6 +162,58 @@ class AppStateTest final : public QObject
         qunsetenv("FOLDERSNAP_DATA_DIR");
     }
 
+    void keepsUnchangedParentFoldersAsCleanupContext()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+
+        const QString existingFolder = watchedDirectory.filePath("existing");
+        QVERIFY(QDir().mkpath(existingFolder));
+        QFile trackedFile(QDir(existingFolder).filePath("tracked.txt"));
+        QVERIFY(trackedFile.open(QIODevice::WriteOnly));
+        QCOMPARE(trackedFile.write("tracked"), qint64(7));
+        trackedFile.close();
+
+        AppState state;
+        state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
+        state.takeSnapshot();
+        QTRY_VERIFY_WITH_TIMEOUT(!state.scanning(), 5000);
+
+        QFile addedFile(QDir(existingFolder).filePath("added.txt"));
+        QVERIFY(addedFile.open(QIODevice::WriteOnly));
+        QCOMPARE(addedFile.write("added"), qint64(5));
+        addedFile.close();
+        state.takeSnapshot();
+        QTRY_VERIFY_WITH_TIMEOUT(!state.scanning(), 5000);
+
+        const QVariantList snapshots = state.snapshots();
+        state.chooseSnapshot(snapshots.at(1).toMap().value("id").toString());
+        state.chooseSnapshot(snapshots.at(0).toMap().value("id").toString());
+        state.startComparison();
+        QTRY_VERIFY_WITH_TIMEOUT(state.comparisonReady(), 5000);
+
+        QCOMPARE(state.cleanupCandidates().size(), 1);
+        const QVariantList rows = state.visibleCleanupCandidates();
+        QCOMPARE(rows.size(), 2);
+        const QVariantMap context = rows.at(0).toMap();
+        const QVariantMap file = rows.at(1).toMap();
+        QCOMPARE(context.value("path").toString(), QString("existing"));
+        QVERIFY(context.value("folder").toBool());
+        QVERIFY(!context.value("cleanupSelectable").toBool());
+        QCOMPARE(file.value("path").toString(), QString("existing/added.txt"));
+        QVERIFY(file.value("cleanupSelectable").toBool());
+
+        state.toggleCleanup("existing");
+        QVERIFY(state.cleanupSelection().isEmpty());
+        state.toggleCleanup("existing/added.txt");
+        QCOMPARE(state.cleanupSelection(), QVariantList{QString("existing/added.txt")});
+        QCOMPARE(state.cleanupSelectionState("existing"), QString("partial"));
+    }
+
     void managesWatchedFolderPreferencesAtomically()
     {
         QTemporaryDir dataDirectory;

@@ -501,10 +501,14 @@ Dialog {
                 delegate: CheckBox {
                     id: candidate
                     required property var modelData
+                    readonly property bool selectable: modelData.cleanupSelectable !== false
                     width: ListView.view.width
                     implicitHeight: 44
                     tristate: true
+                    enabled: candidate.selectable
                     checkState: {
+                        if (!candidate.selectable)
+                            return Qt.Unchecked;
                         dialog.appState.cleanupSelection.length;
                         const state = dialog.appState.cleanupSelectionState(modelData.path);
                         return state === "checked" ? Qt.Checked : state === "partial" ? Qt.PartiallyChecked : Qt.Unchecked;
@@ -513,9 +517,13 @@ Dialog {
                         return checkState === Qt.Checked ? Qt.Unchecked : Qt.Checked;
                     }
                     text: modelData.name
-                    Accessible.name: (modelData.folder ? "Folder " : "File ") + modelData.path
-                    onClicked: dialog.appState.toggleCleanup(modelData.path)
+                    Accessible.name: (modelData.folder ? "Folder " : "File ") + (candidate.selectable ? "" : " context ") + modelData.path
+                    onClicked: {
+                        if (candidate.selectable)
+                            dialog.appState.toggleCleanup(modelData.path);
+                    }
                     indicator: Rectangle {
+                        visible: candidate.selectable
                         x: 10 + candidate.modelData.depth * 16
                         y: 13
                         width: 18

@@ -2,8 +2,9 @@
 
 Cleanup candidates come only from entries classified as definite `Added` changes in a completed
 comparison. `Uncertain`, scope-difference, modified, removed, unchanged, and structural-only tree
-rows are never candidates. Opening cleanup starts with no selection, and this stage does not touch
-the watched folder.
+rows are never selectable candidates. Structural ancestor rows may still be shown as non-selectable
+context so an added descendant's hierarchy is unambiguous. Opening cleanup starts with no
+selection, and this stage does not touch the watched folder.
 
 Selecting a candidate directory selects every candidate below it. Clearing a selected directory
 clears every candidate below it. Clearing a descendant also clears its selected ancestors; those

@@ -442,6 +442,7 @@ class AppState : public QObject
     QString m_ignoreRules;
     QVariantList m_cleanupSelection;
     QVariantList m_cleanupCandidates;
+    QVariantList m_cleanupRows;
     QSet<QString> m_cleanupSelectedPaths;
     QSet<QString> m_cleanupPartialPaths;
     qint64 m_cleanupSelectedBytes{0};

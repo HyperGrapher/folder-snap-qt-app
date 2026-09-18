@@ -799,11 +799,11 @@ QVariantList AppState::visibleCleanupCandidates() const
     const QString query = m_cleanupSearch.trimmed().toLower();
     if (query.isEmpty())
     {
-        return m_cleanupCandidates;
+        return m_cleanupRows;
     }
 
     QSet<QString> visiblePaths;
-    for (const QVariant &value : m_cleanupCandidates)
+    for (const QVariant &value : m_cleanupRows)
     {
         const QString path = value.toMap().value("path").toString();
         if (!path.toLower().contains(query))
@@ -820,7 +820,7 @@ QVariantList AppState::visibleCleanupCandidates() const
     }
 
     QVariantList visible;
-    for (const QVariant &value : m_cleanupCandidates)
+    for (const QVariant &value : m_cleanupRows)
     {
         if (visiblePaths.contains(value.toMap().value("path").toString()))
         {
@@ -1606,12 +1606,40 @@ void AppState::invalidateComparison()
 void AppState::rebuildCleanupCandidates()
 {
     m_cleanupCandidates.clear();
+    m_cleanupRows.clear();
     m_cleanupCandidates.reserve(m_addedCount);
+    m_cleanupRows.reserve(m_changes.size());
+
+    QSet<QString> contextPaths;
     for (const QVariant &value : m_changes)
     {
-        if (value.toMap().value("status") == "Added")
+        const QVariantMap row = value.toMap();
+        if (row.value("status").toString() != "Added")
         {
-            m_cleanupCandidates.append(value);
+            continue;
+        }
+        QString parent = row.value("path").toString();
+        while (parent.contains('/'))
+        {
+            parent = parent.left(parent.lastIndexOf('/'));
+            contextPaths.insert(parent);
+        }
+    }
+
+    for (const QVariant &value : m_changes)
+    {
+        QVariantMap row = value.toMap();
+        const QString path = row.value("path").toString();
+        const bool selectable = row.value("status").toString() == "Added";
+        if (!selectable && !contextPaths.contains(path))
+        {
+            continue;
+        }
+        row["cleanupSelectable"] = selectable;
+        m_cleanupRows.append(row);
+        if (selectable)
+        {
+            m_cleanupCandidates.append(row);
         }
     }
     m_cleanupSelection.clear();
