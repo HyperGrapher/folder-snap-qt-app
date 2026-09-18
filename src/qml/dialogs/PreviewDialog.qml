@@ -459,8 +459,13 @@ Dialog {
                 leftPadding: 12
                 placeholderText: "Filter added files and folders"
                 text: dialog.appState.cleanupSearch
-                onTextChanged: dialog.appState.cleanupSearch = text
+                onTextEdited: cleanupSearchTimer.restart()
                 Accessible.name: "Filter cleanup candidates"
+            }
+            Timer {
+                id: cleanupSearchTimer
+                interval: 180
+                onTriggered: dialog.appState.cleanupSearch = cleanupSearchInput.text
             }
             RowLayout {
                 LabelText {
@@ -480,15 +485,30 @@ Dialog {
                     }
                 }
             }
-            Repeater {
+            ListView {
+                id: cleanupCandidateList
+                objectName: "cleanupCandidateList"
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(360, count * 46)
+                visible: count > 0
+                clip: true
+                reuseItems: true
+                cacheBuffer: 88
+                spacing: 2
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar {}
                 model: dialog.appState.visibleCleanupCandidates
-                CheckBox {
+                delegate: CheckBox {
                     id: candidate
                     required property var modelData
-                    Layout.fillWidth: true
+                    width: ListView.view.width
                     implicitHeight: 44
                     tristate: true
-                    checkState: modelData.selectionState === "checked" ? Qt.Checked : modelData.selectionState === "partial" ? Qt.PartiallyChecked : Qt.Unchecked
+                    checkState: {
+                        dialog.appState.cleanupSelection.length;
+                        const state = dialog.appState.cleanupSelectionState(modelData.path);
+                        return state === "checked" ? Qt.Checked : state === "partial" ? Qt.PartiallyChecked : Qt.Unchecked;
+                    }
                     nextCheckState: function () {
                         return checkState === Qt.Checked ? Qt.Unchecked : Qt.Checked;
                     }

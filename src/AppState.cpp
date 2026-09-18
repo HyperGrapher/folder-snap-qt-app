@@ -111,16 +111,6 @@ QString exportPath(const QUrl &destination, foldersnap::ExportFormat format)
     return path;
 }
 
-QSet<QString> stringSet(const QVariantList &values)
-{
-    QSet<QString> result;
-    for (const QVariant &value : values)
-    {
-        result.insert(value.toString());
-    }
-    return result;
-}
-
 QString triggerName(foldersnap::SnapshotTrigger trigger)
 {
     return trigger == foldersnap::SnapshotTrigger::Scheduled ? "Scheduled" : "Manual";
@@ -523,7 +513,7 @@ void AppState::setDetailId(const QString &detailId)
 
 void AppState::setCleanupSelection(const QVariantList &selection)
 {
-    const QVariantList candidates = cleanupCandidates();
+    const QVariantList &candidates = m_cleanupCandidates;
     QSet<QString> candidatePaths;
     QSet<QString> folderPaths;
     for (const QVariant &candidate : candidates)
@@ -601,6 +591,26 @@ void AppState::setCleanupSelection(const QVariantList &selection)
         return;
     }
     m_cleanupSelection = normalized;
+    m_cleanupSelectedPaths = selectedPaths;
+    m_cleanupPartialPaths.clear();
+    m_cleanupSelectedBytes = 0;
+    for (const QString &selectedPath : std::as_const(selectedPaths))
+    {
+        QString parent = selectedPath;
+        while (parent.contains('/'))
+        {
+            parent = parent.left(parent.lastIndexOf('/'));
+            m_cleanupPartialPaths.insert(parent);
+        }
+    }
+    for (const QVariant &candidate : candidates)
+    {
+        const QVariantMap row = candidate.toMap();
+        if (!row.value("folder").toBool() && selectedPaths.contains(row.value("path").toString()))
+        {
+            m_cleanupSelectedBytes += row.value("afterBytes").toLongLong();
+        }
+    }
     m_cleanupReviewed = false;
     emit cleanupChanged();
 }
@@ -612,7 +622,7 @@ void AppState::setCleanupSearch(const QString &search)
         return;
     }
     m_cleanupSearch = search;
-    emit cleanupChanged();
+    emit cleanupCandidatesChanged();
 }
 
 void AppState::setCleanupReviewed(bool reviewed)
@@ -784,47 +794,16 @@ QString AppState::netSize() const
     return formatSignedBytes(m_netSize);
 }
 
-QVariantList AppState::cleanupCandidates() const
-{
-    const QSet<QString> selectedPaths = stringSet(m_cleanupSelection);
-    QSet<QString> partiallySelectedPaths;
-    for (const QString &selectedPath : selectedPaths)
-    {
-        QString parent = selectedPath;
-        while (parent.contains('/'))
-        {
-            parent = parent.left(parent.lastIndexOf('/'));
-            partiallySelectedPaths.insert(parent);
-        }
-    }
-
-    QVariantList result;
-    for (const QVariant &value : m_changes)
-    {
-        if (value.toMap().value("status") == "Added")
-        {
-            QVariantMap candidate = value.toMap();
-            const QString path = candidate.value("path").toString();
-            candidate["selectionState"] = selectedPaths.contains(path)            ? "checked"
-                                          : partiallySelectedPaths.contains(path) ? "partial"
-                                                                                  : "unchecked";
-            result.append(candidate);
-        }
-    }
-    return result;
-}
-
 QVariantList AppState::visibleCleanupCandidates() const
 {
-    const QVariantList candidates = cleanupCandidates();
     const QString query = m_cleanupSearch.trimmed().toLower();
     if (query.isEmpty())
     {
-        return candidates;
+        return m_cleanupCandidates;
     }
 
     QSet<QString> visiblePaths;
-    for (const QVariant &value : candidates)
+    for (const QVariant &value : m_cleanupCandidates)
     {
         const QString path = value.toMap().value("path").toString();
         if (!path.toLower().contains(query))
@@ -841,7 +820,7 @@ QVariantList AppState::visibleCleanupCandidates() const
     }
 
     QVariantList visible;
-    for (const QVariant &value : candidates)
+    for (const QVariant &value : m_cleanupCandidates)
     {
         if (visiblePaths.contains(value.toMap().value("path").toString()))
         {
@@ -853,33 +832,18 @@ QVariantList AppState::visibleCleanupCandidates() const
 
 QString AppState::cleanupSelectedSize() const
 {
-    const QSet<QString> selectedPaths = stringSet(m_cleanupSelection);
-    qint64 selectedBytes = 0;
-    for (const QVariant &value : cleanupCandidates())
-    {
-        const QVariantMap candidate = value.toMap();
-        if (!candidate.value("folder").toBool() &&
-            selectedPaths.contains(candidate.value("path").toString()))
-        {
-            selectedBytes += candidate.value("afterBytes").toLongLong();
-        }
-    }
-    return formatBytes(selectedBytes);
+    return formatBytes(m_cleanupSelectedBytes);
 }
 
 QString AppState::cleanupSelectionState(const QString &path) const
 {
-    const QSet<QString> selectedPaths = stringSet(m_cleanupSelection);
-    if (selectedPaths.contains(path))
+    if (m_cleanupSelectedPaths.contains(path))
     {
         return "checked";
     }
-    for (const QString &selectedPath : selectedPaths)
+    if (m_cleanupPartialPaths.contains(path))
     {
-        if (selectedPath.startsWith(path + '/'))
-        {
-            return "partial";
-        }
+        return "partial";
     }
     return "unchecked";
 }
@@ -943,6 +907,7 @@ void AppState::chooseSnapshot(const QString &snapshotId)
     invalidateComparison();
     m_comparisonReady = false;
     m_changes.clear();
+    rebuildCleanupCandidates();
     m_expanded.clear();
     emit snapshotPairChanged();
     emit comparisonChanged();
@@ -959,6 +924,7 @@ void AppState::clearSnapshotPair()
     invalidateComparison();
     m_comparisonReady = false;
     m_changes.clear();
+    rebuildCleanupCandidates();
     emit comparisonChanged();
 }
 
@@ -1129,11 +1095,19 @@ void AppState::openSheet(const QString &kind)
         m_detailId = m_snapshots.first().toMap().value("id").toString();
         emit detailIdChanged();
     }
+    const bool cleanupFilterChanged = !m_cleanupSearch.isEmpty();
     m_cleanupSelection.clear();
+    m_cleanupSelectedPaths.clear();
+    m_cleanupPartialPaths.clear();
+    m_cleanupSelectedBytes = 0;
     m_cleanupSearch.clear();
     m_cleanupReviewed = false;
     m_cleanupResult.clear();
     emit cleanupChanged();
+    if (cleanupFilterChanged)
+    {
+        emit cleanupCandidatesChanged();
+    }
     if (kind == "export" || kind == "exportComparison")
     {
         setExportError({});
@@ -1261,7 +1235,7 @@ void AppState::updateRoot(const QString &name, const QString &schedule, int rete
 
 void AppState::toggleCleanup(const QString &path)
 {
-    const QVariantList candidates = cleanupCandidates();
+    const QVariantList &candidates = m_cleanupCandidates;
     bool isCandidate = false;
     for (const QVariant &candidate : candidates)
     {
@@ -1276,7 +1250,7 @@ void AppState::toggleCleanup(const QString &path)
         return;
     }
 
-    QSet<QString> selectedPaths = stringSet(m_cleanupSelection);
+    QSet<QString> selectedPaths = m_cleanupSelectedPaths;
     const bool shouldRemove = selectedPaths.contains(path);
     for (const QVariant &candidate : candidates)
     {
@@ -1605,6 +1579,7 @@ void AppState::finishComparison()
     m_warningCount = result.warningCount;
     m_comparedCount = result.comparedCount;
     m_netSize = result.netSize;
+    rebuildCleanupCandidates();
     m_expanded.clear();
     for (const QVariant &value : m_changes)
     {
@@ -1626,6 +1601,27 @@ void AppState::invalidateComparison()
         m_comparisonWatcher->cancel();
     }
     setComparing(false);
+}
+
+void AppState::rebuildCleanupCandidates()
+{
+    m_cleanupCandidates.clear();
+    m_cleanupCandidates.reserve(m_addedCount);
+    for (const QVariant &value : m_changes)
+    {
+        if (value.toMap().value("status") == "Added")
+        {
+            m_cleanupCandidates.append(value);
+        }
+    }
+    m_cleanupSelection.clear();
+    m_cleanupSelectedPaths.clear();
+    m_cleanupPartialPaths.clear();
+    m_cleanupSelectedBytes = 0;
+    m_cleanupSearch.clear();
+    m_cleanupReviewed = false;
+    emit cleanupCandidatesChanged();
+    emit cleanupChanged();
 }
 
 void AppState::saveConfiguration()

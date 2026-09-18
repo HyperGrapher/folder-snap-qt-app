@@ -77,6 +77,15 @@ TestCase {
         tryCompare(state, "comparisonReady", true, 10000);
         verify(state.comparedCount > 0);
 
+        state.openSheet("cleanup");
+        tryCompare(dialog, "visible", true, 1000);
+        const cleanupCandidateList = findChild(dialog, "cleanupCandidateList");
+        verify(cleanupCandidateList !== null);
+        verify(cleanupCandidateList.reuseItems);
+        compare(state.cleanupSelection.length, 0);
+        dialog.close();
+        tryCompare(dialog, "visible", false, 1000);
+
         state.openSheet("folder");
         tryCompare(dialog, "visible", true, 1000);
         const nameInput = findChild(dialog, "folderNameInput");

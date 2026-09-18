@@ -4,6 +4,7 @@
 
 #include <QFutureWatcher>
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QTimer>
 #include <QUrl>
@@ -86,11 +87,12 @@ class AppState : public QObject
     Q_PROPERTY(QString ignoreRules READ ignoreRules NOTIFY ignoreRulesChanged)
     Q_PROPERTY(QVariantList cleanupSelection READ cleanupSelection WRITE setCleanupSelection NOTIFY
                    cleanupChanged)
-    Q_PROPERTY(QVariantList cleanupCandidates READ cleanupCandidates NOTIFY cleanupChanged)
     Q_PROPERTY(
-        QVariantList visibleCleanupCandidates READ visibleCleanupCandidates NOTIFY cleanupChanged)
-    Q_PROPERTY(
-        QString cleanupSearch READ cleanupSearch WRITE setCleanupSearch NOTIFY cleanupChanged)
+        QVariantList cleanupCandidates READ cleanupCandidates NOTIFY cleanupCandidatesChanged)
+    Q_PROPERTY(QVariantList visibleCleanupCandidates READ visibleCleanupCandidates NOTIFY
+                   cleanupCandidatesChanged)
+    Q_PROPERTY(QString cleanupSearch READ cleanupSearch WRITE setCleanupSearch NOTIFY
+                   cleanupCandidatesChanged)
     Q_PROPERTY(QString cleanupSelectedSize READ cleanupSelectedSize NOTIFY cleanupChanged)
     Q_PROPERTY(
         bool cleanupReviewed READ cleanupReviewed WRITE setCleanupReviewed NOTIFY cleanupChanged)
@@ -269,7 +271,10 @@ class AppState : public QObject
     {
         return m_cleanupSelection;
     }
-    [[nodiscard]] QVariantList cleanupCandidates() const;
+    [[nodiscard]] QVariantList cleanupCandidates() const
+    {
+        return m_cleanupCandidates;
+    }
     [[nodiscard]] QVariantList visibleCleanupCandidates() const;
     [[nodiscard]] QString cleanupSearch() const
     {
@@ -373,6 +378,7 @@ class AppState : public QObject
     void detailIdChanged();
     void ignoreRulesChanged();
     void cleanupChanged();
+    void cleanupCandidatesChanged();
     void preferencesChanged();
 
   private:
@@ -391,6 +397,7 @@ class AppState : public QObject
     void startExport(const QString &firstSnapshotId, const QString &secondSnapshotId,
                      const QString &format, const QUrl &destination);
     void setExportError(const QString &error);
+    void rebuildCleanupCandidates();
     [[nodiscard]] foldersnap::WatchedRoot *currentConfigurationRoot();
     [[nodiscard]] const foldersnap::WatchedRoot *currentConfigurationRoot() const;
     [[nodiscard]] foldersnap::WatchedRoot *configurationRoot(const QString &rootId);
@@ -434,6 +441,10 @@ class AppState : public QObject
     QString m_detailId;
     QString m_ignoreRules;
     QVariantList m_cleanupSelection;
+    QVariantList m_cleanupCandidates;
+    QSet<QString> m_cleanupSelectedPaths;
+    QSet<QString> m_cleanupPartialPaths;
+    qint64 m_cleanupSelectedBytes{0};
     QString m_cleanupSearch;
     bool m_cleanupReviewed{false};
     QString m_cleanupResult;

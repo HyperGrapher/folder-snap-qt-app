@@ -15,6 +15,10 @@ matching descendants retain their candidate ancestors for context. Selected byte
 file candidates once, so selecting both a directory and its descendants does not double-count
 recursive folder sizes.
 
+The modal virtualizes candidate rows, reuses delegates, caches the definite-Added projection and
+selection-state sets, and debounces filter updates. Opening or selecting within a large cleanup
+plan must not instantiate one QML control per candidate or rebuild the candidate model.
+
 This selection model is only input to the later preflight stage. Selection never means that an
 item is safe to move, and no cleanup mutation is available until containment, reparse, live
 metadata, type, link-target, and untracked-directory-content checks have completed.
