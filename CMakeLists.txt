@@ -133,6 +133,8 @@ qt_add_shaders(
 qt_add_executable(
     FolderSnap WIN32
     src/main.cpp
+    src/platform/windows/SingleInstance.h
+    src/platform/windows/SingleInstance.cpp
     src/WindowsWindowController.h
     src/WindowsWindowController.cpp
 )
@@ -171,6 +173,15 @@ if(BUILD_TESTING)
     qt_add_executable(tst_appstate tests/tst_appstate.cpp)
     target_link_libraries(tst_appstate PRIVATE folder_snap_ui Qt6::Test)
     add_test(NAME appstate COMMAND tst_appstate)
+
+    qt_add_executable(tst_singleinstance
+        tests/tst_singleinstance.cpp
+        src/platform/windows/SingleInstance.h
+        src/platform/windows/SingleInstance.cpp
+    )
+    target_include_directories(tst_singleinstance PRIVATE src)
+    target_link_libraries(tst_singleinstance PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    add_test(NAME singleinstance COMMAND tst_singleinstance)
 
     qt_add_executable(tst_scancoordinator tests/tst_scancoordinator.cpp)
     target_link_libraries(tst_scancoordinator PRIVATE folder_snap_ui Qt6::Test)

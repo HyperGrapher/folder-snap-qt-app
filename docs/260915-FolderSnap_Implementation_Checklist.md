@@ -219,7 +219,7 @@ Exit: only unchanged, contained Added items can be moved to the Recycle Bin, wit
 
 ## Phase 10 — Windows lifecycle integration
 
-- [ ] Implement named-mutex ownership plus `QLocalServer`/`QLocalSocket` activation for a race-safe single instance.
+- [x] Implement named-mutex ownership plus `QLocalServer`/`QLocalSocket` activation for a race-safe single instance.
 - [ ] Implement the persistent FolderSnap tray icon, left-click restore, and Open/Snapshot/Settings/Quit actions.
 - [ ] Implement close-to-tray and explicit Quit semantics.
 - [ ] Implement scheduled failure and optional success notifications.

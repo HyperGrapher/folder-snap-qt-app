@@ -50,6 +50,15 @@ bool WindowsWindowController::isExposed() const
     return m_window.isExposed() && m_window.isVisible() &&
            m_window.visibility() != QWindow::Minimized;
 }
+void WindowsWindowController::activate()
+{
+    m_window.showNormal();
+    m_window.raise();
+    m_window.requestActivate();
+#ifdef Q_OS_WIN
+    SetForegroundWindow(reinterpret_cast<HWND>(m_handle));
+#endif
+}
 bool WindowsWindowController::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == &m_window)

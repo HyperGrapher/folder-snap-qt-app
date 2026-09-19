@@ -13,6 +13,7 @@ class WindowsWindowController final : public QObject, public QAbstractNativeEven
     explicit WindowsWindowController(QQuickWindow &window);
     ~WindowsWindowController() override;
     [[nodiscard]] bool isExposed() const;
+    void activate();
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
   signals:
