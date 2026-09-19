@@ -137,6 +137,8 @@ qt_add_executable(
     src/platform/windows/SingleInstance.cpp
     src/platform/windows/WindowsTrayController.h
     src/platform/windows/WindowsTrayController.cpp
+    src/platform/windows/WindowsNotificationController.h
+    src/platform/windows/WindowsNotificationController.cpp
     src/WindowsWindowController.h
     src/WindowsWindowController.cpp
 )

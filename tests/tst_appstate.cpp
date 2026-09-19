@@ -375,6 +375,11 @@ class AppStateTest final : public QObject
         foldersnap::ConfigurationStore(paths).saveConfiguration(configuration);
 
         AppState state;
+        QSignalSpy dueSpy(&state, &AppState::scheduledSnapshotDue);
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 5000);
+        QCOMPARE(dueSpy.first().at(0).toString(), root.rootId);
+        QCOMPARE(dueSpy.first().at(1).toString(), root.displayName);
+        state.startScheduledSnapshot(root.rootId);
         QTRY_COMPARE_WITH_TIMEOUT(state.snapshots().size(), 1, 5000);
         QCOMPARE(state.snapshots().first().toMap().value("trigger").toString(),
                  QString("Scheduled"));
@@ -434,6 +439,43 @@ class AppStateTest final : public QObject
         const foldersnap::Configuration persisted =
             foldersnap::ConfigurationStore(paths).loadConfiguration().value;
         QCOMPARE(persisted.roots.first().schedule.nextDueAtUtc, overdue);
+    }
+
+    void postponesScheduledSnapshotUntilSnoozeExpires()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+
+        const foldersnap::RootPath normalized =
+            foldersnap::normalizeRootPath(watchedDirectory.path());
+        foldersnap::WatchedRoot root;
+        root.rootId = foldersnap::createId();
+        root.displayName = "Snoozed folder";
+        root.path = normalized.displayPath;
+        root.normalizedPath = normalized.identityPath;
+        root.schedule.kind = foldersnap::ScheduleKind::Interval;
+        root.schedule.intervalHours = 1;
+        root.schedule.nextDueAtUtc = foldersnap::UtcTimestamp{
+            QDateTime::currentDateTimeUtc().addSecs(-5 * 60).toMSecsSinceEpoch() * 1000000};
+
+        foldersnap::Configuration configuration;
+        configuration.roots.append(root);
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        foldersnap::ConfigurationStore(paths).saveConfiguration(configuration);
+
+        AppState state;
+        QSignalSpy dueSpy(&state, &AppState::scheduledSnapshotDue);
+        QTRY_COMPARE_WITH_TIMEOUT(dueSpy.count(), 1, 5000);
+        state.snoozeScheduledSnapshot(root.rootId, 5);
+        state.startScheduledSnapshot(root.rootId);
+        QTest::qWait(100);
+        QVERIFY(state.snapshots().isEmpty());
+        QCOMPARE(dueSpy.count(), 1);
     }
 };
 QTEST_GUILESS_MAIN(AppStateTest)

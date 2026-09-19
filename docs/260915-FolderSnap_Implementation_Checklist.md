@@ -222,7 +222,8 @@ Exit: only unchanged, contained Added items can be moved to the Recycle Bin, wit
 - [x] Implement named-mutex ownership plus `QLocalServer`/`QLocalSocket` activation for a race-safe single instance.
 - [x] Implement the persistent FolderSnap tray icon, left-click restore, and Open/Snapshot/Settings/Quit actions.
 - [x] Implement close-to-tray and explicit Quit semantics.
-- [ ] Implement scheduled failure and optional success notifications.
+- [x] Implement scheduled snapshot reminders with 5/15/30-minute snooze, scan progress/completion, and failure notifications.
+- [ ] Implement the optional scheduled-success notification preference.
 - [ ] Implement `--background` startup without briefly showing the window.
 - [ ] Implement HKCU startup registration and executable-path repair.
 - [ ] Implement Explorer actions for watched roots and the FolderSnap data directory.

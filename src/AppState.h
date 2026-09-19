@@ -3,6 +3,7 @@
 #include <memory>
 
 #include <QFutureWatcher>
+#include <QHash>
 #include <QObject>
 #include <QSet>
 #include <QStringList>
@@ -395,6 +396,8 @@ class AppState : public QObject
     Q_INVOKABLE void chooseRoot(int index);
     Q_INVOKABLE void chooseSnapshot(const QString &snapshotId);
     Q_INVOKABLE void clearSnapshotPair();
+    Q_INVOKABLE void startScheduledSnapshot(const QString &rootId);
+    Q_INVOKABLE void snoozeScheduledSnapshot(const QString &rootId, int minutes);
     Q_INVOKABLE void toggleExpanded(const QString &path);
     Q_INVOKABLE void takeSnapshot();
     Q_INVOKABLE void cancelScan();
@@ -433,6 +436,7 @@ class AppState : public QObject
     void scanProgressed(const QString &rootId, int progress);
     void scanCompleted(const QString &rootId, const QString &snapshotId, qint64 warningCount);
     void scanFailed(const QString &rootId, const QString &error);
+    void scheduledSnapshotDue(const QString &rootId, const QString &displayName);
     void configurationChanged();
     void comparingChanged();
     void comparisonChanged();
@@ -528,6 +532,9 @@ class AppState : public QObject
     int m_cleanupFailedCount{0};
     quint64 m_cleanupPreflightGeneration{0};
     quint64 m_cleanupExecutionGeneration{0};
+    QSet<QString> m_pendingScheduledRoots;
+    QHash<QString, foldersnap::UtcTimestamp> m_pendingScheduledNextDue;
+    QHash<QString, foldersnap::UtcTimestamp> m_snoozedScheduledRoots;
     bool m_closeToTray{true};
     bool m_launchAtStartup{false};
     bool m_notifyScheduledSuccess{false};

@@ -1,6 +1,7 @@
 #include "AppState.h"
 #include "WindowsWindowController.h"
 #include "platform/windows/SingleInstance.h"
+#include "platform/windows/WindowsNotificationController.h"
 #include "platform/windows/WindowsTrayController.h"
 #include <QApplication>
 #include <QDebug>
@@ -53,6 +54,7 @@ int main(int argc, char *argv[])
     }
     WindowsWindowController windowController(*window);
     WindowsTrayController trayController(*appState, windowController);
+    WindowsNotificationController notificationController(*appState);
     const auto updateCloseToTray = [&app, &windowController, &trayController, appState]()
     {
         const bool trayAvailable = trayController.isAvailable();
