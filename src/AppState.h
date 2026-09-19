@@ -398,6 +398,7 @@ class AppState : public QObject
     Q_INVOKABLE void clearSnapshotPair();
     Q_INVOKABLE void startScheduledSnapshot(const QString &rootId);
     Q_INVOKABLE void snoozeScheduledSnapshot(const QString &rootId, int minutes);
+    Q_INVOKABLE QVariantList snapshotWarnings(const QString &snapshotId) const;
     Q_INVOKABLE void toggleExpanded(const QString &path);
     Q_INVOKABLE void takeSnapshot();
     Q_INVOKABLE void cancelScan();

@@ -323,29 +323,55 @@ Dialog {
             }
         }
         ColumnLayout {
+            id: warningSection
             visible: dialog.kind === "warnings"
             Layout.fillWidth: true
             spacing: 10
+            property var warningItems: dialog.appState.snapshotWarnings(dialog.appState.detailId)
+            LabelText {
+                visible: warningSection.warningItems.length === 0
+                Layout.fillWidth: true
+                text: {
+                    var snapshot = dialog.appState.snapshot(dialog.appState.detailId);
+                    if (snapshot.warningCount > 0 && snapshot.payloadAvailable !== true)
+                        return "Warning details are unavailable because this snapshot payload is missing.";
+                    return "No scan warnings were recorded for this snapshot.";
+                }
+                color: Theme.muted
+                wrapMode: Text.WordWrap
+            }
             Repeater {
-                model: ["cache/private — Access denied", "assets/staging — Directory became unavailable"]
+                model: warningSection.warningItems
                 Panel {
-                    required property string modelData
+                    required property var modelData
                     Layout.fillWidth: true
-                    implicitHeight: 58
+                    implicitHeight: warningMessage.implicitHeight + warningPath.implicitHeight + 42
                     color: "#342f26"
                     border.color: "#59503c"
                     RowLayout {
                         anchors.fill: parent
                         anchors.margins: 14
+                        spacing: 11
                         Glyph {
                             name: "warning"
                             color: Theme.warning
                         }
-                        LabelText {
-                            text: modelData
-                            font.pixelSize: 11
-                            color: Theme.warning
+                        ColumnLayout {
                             Layout.fillWidth: true
+                            spacing: 3
+                            LabelText {
+                                id: warningPath
+                                Layout.fillWidth: true
+                                text: modelData.path
+                                font.pixelSize: 11
+                                color: Theme.warning
+                            }
+                            BodyText {
+                                id: warningMessage
+                                Layout.fillWidth: true
+                                text: modelData.category + " · " + modelData.operation + " · " + modelData.message
+                                color: Theme.secondary
+                            }
                         }
                     }
                 }

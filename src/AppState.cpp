@@ -119,6 +119,32 @@ QString triggerName(foldersnap::SnapshotTrigger trigger)
     return trigger == foldersnap::SnapshotTrigger::Scheduled ? "Scheduled" : "Manual";
 }
 
+QString warningOperationName(foldersnap::WarningOperation operation)
+{
+    switch (operation)
+    {
+    case foldersnap::WarningOperation::Enumerate:
+        return "Folder enumeration";
+    case foldersnap::WarningOperation::Stat:
+        return "Metadata read";
+    }
+    return "Scan operation";
+}
+
+QString warningCategoryName(foldersnap::WarningCategory category)
+{
+    switch (category)
+    {
+    case foldersnap::WarningCategory::AccessDenied:
+        return "Access denied";
+    case foldersnap::WarningCategory::NotFound:
+        return "Not found";
+    case foldersnap::WarningCategory::Io:
+        return "I/O error";
+    }
+    return "Scan warning";
+}
+
 QString scheduleName(const foldersnap::Schedule &schedule)
 {
     switch (schedule.kind)
@@ -1940,6 +1966,33 @@ QVariantMap AppState::snapshot(const QString &snapshotId) const
         }
     }
     return {};
+}
+
+QVariantList AppState::snapshotWarnings(const QString &snapshotId) const
+{
+    if (snapshotId.isEmpty())
+    {
+        return {};
+    }
+    try
+    {
+        const foldersnap::Snapshot snapshot =
+            foldersnap::SnapshotStore(m_paths).loadSnapshot(snapshotId);
+        QVariantList result;
+        result.reserve(snapshot.header.scanWarnings.size());
+        for (const foldersnap::ScanWarning &warning : snapshot.header.scanWarnings)
+        {
+            result.append(QVariantMap{{"path", warning.path},
+                                      {"operation", warningOperationName(warning.operation)},
+                                      {"category", warningCategoryName(warning.category)},
+                                      {"message", warning.message}});
+        }
+        return result;
+    }
+    catch (const foldersnap::DomainError &)
+    {
+        return {};
+    }
 }
 
 void AppState::refreshModels()
