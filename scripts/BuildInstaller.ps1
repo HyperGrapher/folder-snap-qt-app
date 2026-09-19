@@ -61,24 +61,42 @@ function Find-CommandPath {
     return $command.Source
 }
 
+function Write-Step {
+    param([Parameter(Mandatory)][string]$Message)
+
+    Write-Host "[FolderSnap] $Message"
+}
+
 function Invoke-LoggedCommand {
     param(
         [Parameter(Mandatory)][string]$FilePath,
         [Parameter(Mandatory)][string[]]$ArgumentList,
-        [Parameter(Mandatory)][string]$LogPath
+        [Parameter(Mandatory)][string]$LogPath,
+        [string]$Description = ''
     )
 
     $logDirectory = Split-Path -Parent $LogPath
     New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
 
+    if (-not [string]::IsNullOrWhiteSpace($Description)) {
+        Write-Step "${Description}..."
+    }
+
     & $FilePath @ArgumentList > $LogPath 2>&1
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
+        if (-not [string]::IsNullOrWhiteSpace($Description)) {
+            Write-Host "[FolderSnap] ${Description} failed." -ForegroundColor Red
+        }
         Write-Host "Command failed ($exitCode): $FilePath"
         if (Test-Path $LogPath) {
             Get-Content -LiteralPath $LogPath -Tail 160
         }
         throw "The command failed. See $LogPath for the complete output."
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($Description)) {
+        Write-Step "${Description} complete."
     }
 }
 
@@ -110,6 +128,11 @@ $buildDirectoryValue = if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
     $BuildDirectory
 }
 $buildDirectory = Resolve-AbsolutePath $buildDirectoryValue
+
+Write-Step 'Preparing installer build.'
+Write-Host "  Project: $projectRoot"
+Write-Host "  Build:   $buildDirectory"
+Write-Step 'Checking required build tools.'
 
 $missingRequirements = @()
 
@@ -198,12 +221,14 @@ if ($missingRequirements.Count -gt 0) {
     throw 'Install the missing tools or provide their root paths, then run the installer script again.'
 }
 
+Write-Step 'Required build tools found.'
 New-Item -ItemType Directory -Force -Path $buildDirectory | Out-Null
 $env:PATH = "$(Join-Path $compilerRoot 'bin');$(Join-Path $qtRoot 'bin');$env:PATH"
 $vcpkgInstalledDirectory = Join-Path $buildDirectory 'vcpkg_installed'
 $zlibHeaderPath = Join-Path $vcpkgInstalledDirectory "$Triplet\include\zlib.h"
 $zlibRuntime = Find-ZlibRuntime $vcpkgInstalledDirectory $Configuration
 
+Write-Step 'Checking zlib dependency.'
 if (-not (Test-Path $zlibHeaderPath) -or $null -eq $zlibRuntime) {
     Push-Location $projectRoot
     try {
@@ -212,7 +237,7 @@ if (-not (Test-Path $zlibHeaderPath) -or $null -eq $zlibRuntime) {
             "--triplet=$Triplet",
             "--x-install-root=$vcpkgInstalledDirectory",
             '--no-print-usage'
-        ) (Join-Path $buildDirectory 'vcpkg-install.log')
+        ) (Join-Path $buildDirectory 'vcpkg-install.log') 'Installing zlib dependency'
     } finally {
         Pop-Location
     }
@@ -221,6 +246,9 @@ if (-not (Test-Path $zlibHeaderPath) -or $null -eq $zlibRuntime) {
     if ($null -eq $zlibRuntime) {
         throw "vcpkg finished without producing a zlib runtime DLL in $vcpkgInstalledDirectory\$Triplet\bin."
     }
+    Write-Step 'zlib dependency ready.'
+} else {
+    Write-Step 'zlib dependency already available.'
 }
 
 $cachePath = Join-Path $buildDirectory 'CMakeCache.txt'
@@ -245,7 +273,9 @@ if ($needsConfigure) {
         "-DVCPKG_TARGET_TRIPLET=$Triplet",
         '-DFOLDERSNAP_INSTALL_DEPENDENCIES=OFF',
         '-DBUILD_TESTING=OFF'
-    ) (Join-Path $buildDirectory 'cmake-configure.log')
+    ) (Join-Path $buildDirectory 'cmake-configure.log') 'Configuring CMake'
+} else {
+    Write-Step 'CMake configuration is up to date.'
 }
 
 $applicationPath = Join-Path $buildDirectory 'FolderSnap.exe'
@@ -259,7 +289,9 @@ if (-not $SkipBuild) {
         '--build', $buildDirectory,
         '--target', 'FolderSnap',
         '--parallel', "$Parallel"
-    ) (Join-Path $buildDirectory 'build.log')
+    ) (Join-Path $buildDirectory 'build.log') 'Building FolderSnap target'
+} else {
+    Write-Step 'Skipping application build (-SkipBuild).'
 }
 
 if (-not (Test-Path $applicationPath)) {
@@ -268,6 +300,7 @@ if (-not (Test-Path $applicationPath)) {
 
 $deploymentDirectory = Join-Path $buildDirectory 'deploy'
 $installerDirectory = Join-Path $buildDirectory 'installer'
+Write-Step 'Preparing deployment directory.'
 if (Test-Path $deploymentDirectory) {
     Remove-Item -LiteralPath $deploymentDirectory -Recurse -Force
 }
@@ -275,6 +308,7 @@ New-Item -ItemType Directory -Force -Path $deploymentDirectory, $installerDirect
 
 $deploymentApplicationPath = Join-Path $deploymentDirectory 'FolderSnap.exe'
 Copy-Item -LiteralPath $applicationPath -Destination $deploymentApplicationPath
+Write-Step 'Copied application executable.'
 
 $windeployConfiguration = if ($Configuration -eq 'Debug') { '--debug' } else { '--release' }
 Invoke-LoggedCommand $windeployqtPath @(
@@ -284,9 +318,10 @@ Invoke-LoggedCommand $windeployqtPath @(
     '--qmldir', (Join-Path $projectRoot 'src\qml'),
     '--dir', $deploymentDirectory,
     $deploymentApplicationPath
-) (Join-Path $buildDirectory 'windeployqt.log')
+) (Join-Path $buildDirectory 'windeployqt.log') 'Deploying Qt runtime'
 
 Copy-Item -LiteralPath $zlibRuntime.FullName -Destination $deploymentDirectory
+Write-Step 'Copied zlib runtime.'
 
 $installerScript = Join-Path $projectRoot 'installer\FolderSnap.iss'
 $installerPath = Join-Path $installerDirectory "FolderSnap-Setup-$Version.exe"
@@ -300,11 +335,12 @@ Invoke-LoggedCommand $isccPath @(
     "/DSourceDir=$deploymentDirectory",
     "/DOutputDir=$installerDirectory",
     $installerScript
-) (Join-Path $buildDirectory 'inno-setup.log')
+) (Join-Path $buildDirectory 'inno-setup.log') 'Building installer package'
 
 if (-not (Test-Path $installerPath)) {
     throw "Inno Setup completed without producing $installerPath."
 }
 
+Write-Step 'Installer packaging complete.'
 Write-Host "Deployment folder: $deploymentDirectory"
 Write-Host "Installer: $installerPath"

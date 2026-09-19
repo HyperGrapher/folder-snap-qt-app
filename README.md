@@ -78,8 +78,10 @@ resolved from `PATH`, while Inno Setup uses the current user's standard local
 installation directory. The build directory defaults to `build/`. CI can provide
 the same values through the corresponding `FOLDERSNAP_QT_ROOT`,
 `FOLDERSNAP_COMPILER_ROOT`, `VCPKG_ROOT`, and `FOLDERSNAP_INNO_ROOT` environment
-variables. Pass `-Version 1.2.3` for a release version and `-SkipBuild` when
-packaging an already-built executable.
+variables. The script prints each packaging step while redirecting command output
+to logs under `build/`; it only shows the relevant log tail if a command fails.
+Pass `-Version 1.2.3` for a release version and `-SkipBuild` when packaging an
+already-built executable.
 
 ## What to try
 
