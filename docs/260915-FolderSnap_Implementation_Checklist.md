@@ -220,8 +220,8 @@ Exit: only unchanged, contained Added items can be moved to the Recycle Bin, wit
 ## Phase 10 — Windows lifecycle integration
 
 - [x] Implement named-mutex ownership plus `QLocalServer`/`QLocalSocket` activation for a race-safe single instance.
-- [ ] Implement the persistent FolderSnap tray icon, left-click restore, and Open/Snapshot/Settings/Quit actions.
-- [ ] Implement close-to-tray and explicit Quit semantics.
+- [x] Implement the persistent FolderSnap tray icon, left-click restore, and Open/Snapshot/Settings/Quit actions.
+- [x] Implement close-to-tray and explicit Quit semantics.
 - [ ] Implement scheduled failure and optional success notifications.
 - [ ] Implement `--background` startup without briefly showing the window.
 - [ ] Implement HKCU startup registration and executable-path repair.

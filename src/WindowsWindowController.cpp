@@ -59,10 +59,28 @@ void WindowsWindowController::activate()
     SetForegroundWindow(reinterpret_cast<HWND>(m_handle));
 #endif
 }
+void WindowsWindowController::setCloseToTray(bool enabled)
+{
+    m_closeToTray = enabled;
+}
+void WindowsWindowController::quit()
+{
+    m_quitRequested = true;
+    QCoreApplication::quit();
+}
 bool WindowsWindowController::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == &m_window)
     {
+        if (event->type() == QEvent::Close)
+        {
+            if (m_closeToTray && !m_quitRequested)
+            {
+                m_window.hide();
+                return true;
+            }
+            m_quitRequested = true;
+        }
         if (event->type() == QEvent::Expose || event->type() == QEvent::Show ||
             event->type() == QEvent::Hide)
         {

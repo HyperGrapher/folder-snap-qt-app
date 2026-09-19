@@ -1,6 +1,8 @@
+#include "AppState.h"
 #include "WindowsWindowController.h"
 #include "platform/windows/SingleInstance.h"
-#include <QGuiApplication>
+#include "platform/windows/WindowsTrayController.h"
+#include <QApplication>
 #include <QDebug>
 #include <QIcon>
 #include <QQmlApplicationEngine>
@@ -11,7 +13,8 @@
 Q_IMPORT_QML_PLUGIN(FolderSnapPlugin)
 int main(int argc, char *argv[])
 {
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
+    app.setQuitOnLastWindowClosed(false);
     QGuiApplication::setApplicationName("FolderSnap");
     QGuiApplication::setApplicationDisplayName("FolderSnap");
     QGuiApplication::setOrganizationName("FolderSnap");
@@ -42,7 +45,22 @@ int main(int argc, char *argv[])
     {
         return 1;
     }
+    auto *appState = qobject_cast<AppState *>(window->property("appState").value<QObject *>());
+    if (!appState)
+    {
+        qCritical("Could not access the FolderSnap application state.");
+        return 1;
+    }
     WindowsWindowController windowController(*window);
+    WindowsTrayController trayController(*appState, windowController);
+    const auto updateCloseToTray = [&app, &windowController, &trayController, appState]()
+    {
+        const bool trayAvailable = trayController.isAvailable();
+        windowController.setCloseToTray(appState->closeToTray() && trayAvailable);
+        app.setQuitOnLastWindowClosed(!appState->closeToTray() || !trayAvailable);
+    };
+    updateCloseToTray();
+    QObject::connect(appState, &AppState::preferencesChanged, &app, updateCloseToTray);
     window->setProperty("windowController", QVariant::fromValue(&windowController));
     QObject::connect(&singleInstance, &SingleInstance::activationRequested, &windowController,
                      &WindowsWindowController::activate);

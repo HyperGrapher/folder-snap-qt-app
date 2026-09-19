@@ -135,6 +135,8 @@ qt_add_executable(
     src/main.cpp
     src/platform/windows/SingleInstance.h
     src/platform/windows/SingleInstance.cpp
+    src/platform/windows/WindowsTrayController.h
+    src/platform/windows/WindowsTrayController.cpp
     src/WindowsWindowController.h
     src/WindowsWindowController.cpp
 )

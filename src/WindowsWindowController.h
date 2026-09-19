@@ -14,6 +14,8 @@ class WindowsWindowController final : public QObject, public QAbstractNativeEven
     ~WindowsWindowController() override;
     [[nodiscard]] bool isExposed() const;
     void activate();
+    void setCloseToTray(bool enabled);
+    void quit();
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
   signals:
@@ -27,4 +29,6 @@ class WindowsWindowController final : public QObject, public QAbstractNativeEven
     qreal m_titleButtonsWidth{138};
     bool m_usesNativeRounding{false};
     bool m_reportedCornerFailure{false};
+    bool m_closeToTray{false};
+    bool m_quitRequested{false};
 };
