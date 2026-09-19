@@ -23,3 +23,10 @@ plan must not instantiate one QML control per candidate or rebuild the candidate
 This selection model is only input to the later preflight stage. Selection never means that an
 item is safe to move, and no cleanup mutation is available until containment, reparse, live
 metadata, type, link-target, and untracked-directory-content checks have completed.
+
+The read-only preflight implementation returns one result for every selected candidate. It
+normalizes and containment-checks each path, rejects reparse-point ancestors, compares live type
+and tracked metadata, verifies stored reparse targets, and recursively checks selected directory
+content without following reparse directories. A selected directory inherits a blocked status from
+any blocked selected descendant; `already_missing` descendants do not block their parent. The
+preflight result is safe to display but does not mutate the watched folder.
