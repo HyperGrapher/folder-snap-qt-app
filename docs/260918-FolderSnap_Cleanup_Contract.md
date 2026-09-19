@@ -44,3 +44,7 @@ deletion. Each attempt appends one compact JSONL event under FolderSnap's root-s
 data directory, preserving prior audit lines through an atomic rewrite. The modal reports moved,
 blocked, already-missing, and failed totals and keeps the originals restorable from the Recycle
 Bin.
+
+The cleanup safety suite covers traversal rejection, Windows reparse ancestors, case-insensitive
+selection, extra directory content, disappearing-path races, Shell abort/failure handling, and
+audit ID validation.

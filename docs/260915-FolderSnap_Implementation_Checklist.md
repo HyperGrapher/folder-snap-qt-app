@@ -213,7 +213,7 @@ Exit: saved snapshots and completed comparisons export complete offline HTML and
 - [x] Execute deepest-first through Windows `IFileOperation` with Recycle Bin/undo semantics.
 - [x] Never fall back to permanent deletion.
 - [x] Write an append-preserving JSONL audit and present per-item results.
-- [ ] Add safety tests for traversal, reparse, casing, races, extra content, Shell abort/failure, and audit ID validation.
+- [x] Add safety tests for traversal, reparse, casing, races, extra content, Shell abort/failure, and audit ID validation.
 
 Exit: only unchanged, contained Added items can be moved to the Recycle Bin, with a durable audit trail.
 

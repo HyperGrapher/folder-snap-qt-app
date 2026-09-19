@@ -2,8 +2,12 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#ifdef Q_OS_WIN
+#include <QProcess>
+#endif
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -199,6 +203,109 @@ class CleanupTest final : public QObject
         QVERIFY(result.cancelled);
         QVERIFY(result.items.isEmpty());
     }
+
+    void executorRejectsTraversalWithoutMove()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(temporaryDirectory.isValid());
+
+        foldersnap::SnapshotEntry entry;
+        entry.path = "../escape";
+        entry.displayPath = entry.path;
+        entry.type = foldersnap::EntryType::File;
+
+        foldersnap::CleanupExecutionRequest request;
+        request.paths = foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        request.root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        request.rootId = foldersnap::createId();
+        request.beforeId = foldersnap::createId();
+        request.afterId = foldersnap::createId();
+        request.candidates = {{entry}};
+        request.selectedPaths = {entry.path};
+
+        int attempts = 0;
+        const auto result =
+            foldersnap::CleanupExecutor::execute(request,
+                                                 [&attempts](const QString &)
+                                                 {
+                                                     ++attempts;
+                                                     return foldersnap::CleanupMoveResult{true};
+                                                 });
+
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(attempts, 0);
+        QCOMPARE(executionItemAt(result, "../escape")->status,
+                 foldersnap::CleanupStatus::OutsideRootOrInvalid);
+    }
+
+    void disappearingPathIsReportedWithoutFallback()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(temporaryDirectory.isValid());
+        writeFile(temporaryDirectory.filePath("item.txt"), "item");
+
+        const foldersnap::RootPath root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        const foldersnap::ScanResult scanResult = scan(root);
+        QVERIFY2(scanResult.error.isEmpty(), qPrintable(scanResult.error));
+
+        foldersnap::CleanupExecutionRequest request;
+        request.paths = foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        request.root = root;
+        request.rootId = foldersnap::createId();
+        request.beforeId = foldersnap::createId();
+        request.afterId = foldersnap::createId();
+        request.candidates = candidatesFor(scanResult.snapshot, {"item.txt"});
+        request.selectedPaths = {"item.txt"};
+
+        const auto result = foldersnap::CleanupExecutor::execute(
+            request, [](const QString &)
+            { return foldersnap::CleanupMoveResult{false, true, false, "Path disappeared."}; });
+
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(executionItemAt(result, "item.txt")->status,
+                 foldersnap::CleanupStatus::AlreadyMissing);
+        QCOMPARE(result.summary.movedCount, 0);
+        QCOMPARE(result.summary.alreadyMissingCount, 1);
+        QVERIFY(QFileInfo::exists(temporaryDirectory.filePath("item.txt")));
+    }
+
+#ifdef Q_OS_WIN
+    void reparseAncestorBlocksCleanup()
+    {
+        QTemporaryDir watchedDirectory;
+        QTemporaryDir junctionTarget;
+        QVERIFY(watchedDirectory.isValid());
+        QVERIFY(junctionTarget.isValid());
+        writeFile(junctionTarget.filePath("outside.txt"), "outside");
+
+        const QString junctionPath = watchedDirectory.filePath("external");
+        QProcess process;
+        process.start("cmd.exe",
+                      {"/D", "/C", "mklink", "/J", QDir::toNativeSeparators(junctionPath),
+                       QDir::toNativeSeparators(junctionTarget.path())});
+        QVERIFY(process.waitForFinished());
+        if (process.exitCode() != 0)
+        {
+            QSKIP("The test environment does not allow creating directory junctions.");
+        }
+
+        const foldersnap::RootPath root = foldersnap::normalizeRootPath(watchedDirectory.path());
+        foldersnap::SnapshotEntry entry;
+        entry.path = "external/outside.txt";
+        entry.displayPath = entry.path;
+        entry.type = foldersnap::EntryType::File;
+        entry.size = QFileInfo(junctionTarget.filePath("outside.txt")).size();
+
+        const auto result =
+            foldersnap::CleanupPreflight::inspect(root, {{entry}}, {"external/outside.txt"});
+        QCOMPARE(itemAt(result, "external/outside.txt")->status,
+                 foldersnap::CleanupStatus::OutsideRootOrInvalid);
+    }
+#endif
 
     void executionRevalidatesAndMovesDeepestFirst()
     {
