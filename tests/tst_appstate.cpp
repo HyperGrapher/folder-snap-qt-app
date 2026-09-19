@@ -125,6 +125,16 @@ class AppStateTest final : public QObject
             QCOMPARE(state.cleanupSelection().size(), 4);
             QCOMPARE(state.cleanupSelectedSize(), QString("8 B"));
             QCOMPARE(state.cleanupSelectionState("added"), QString("checked"));
+            QTRY_VERIFY_WITH_TIMEOUT(state.cleanupReviewed(), 5000);
+            QCOMPARE(state.cleanupReadyCount(), 4);
+            QCOMPARE(state.cleanupBlockedCount(), 0);
+            QCOMPARE(state.cleanupAlreadyMissingCount(), 0);
+            const auto reviewedAdded =
+                std::find_if(state.cleanupCandidates().cbegin(), state.cleanupCandidates().cend(),
+                             [](const QVariant &candidate)
+                             { return candidate.toMap().value("path").toString() == "added"; });
+            QVERIFY(reviewedAdded != state.cleanupCandidates().cend());
+            QCOMPARE(reviewedAdded->toMap().value("preflightStatus").toString(), QString("ready"));
             state.toggleCleanup("added/one.txt");
             QCOMPARE(state.cleanupSelection().size(), 2);
             QCOMPARE(state.cleanupSelectedSize(), QString("5 B"));

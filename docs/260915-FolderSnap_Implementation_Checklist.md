@@ -207,8 +207,8 @@ Exit: saved snapshots and completed comparisons export complete offline HTML and
 - [x] Build cleanup candidates only from definite Added entries and begin with nothing selected.
 - [x] Implement hierarchical selection, descendant propagation, indeterminate parents, persistent selection through filtering, and byte totals.
 - [x] Implement containment, reparse-ancestor, live-type, metadata, link-target, and untracked-directory-content preflight checks.
-- [ ] Propagate blocked descendants to selected parent directories.
-- [ ] Present Ready, Blocked, and Already Missing results before explicit confirmation.
+- [x] Propagate blocked descendants to selected parent directories.
+- [x] Present Ready, Blocked, and Already Missing results before explicit confirmation.
 - [ ] Re-run preflight immediately before mutation to close the time-of-check/time-of-use window.
 - [ ] Execute deepest-first through Windows `IFileOperation` with Recycle Bin/undo semantics.
 - [ ] Never fall back to permanent deletion.

@@ -14,6 +14,7 @@
 
 #include "application/ExportCoordinator.h"
 #include "application/ScanCoordinator.h"
+#include "cleanup/CleanupPreflight.h"
 #include "domain/Configuration.h"
 #include "domain/Snapshot.h"
 #include "storage/StoragePaths.h"
@@ -31,6 +32,16 @@ struct ComparisonJobResult
     int warningCount{0};
     int comparedCount{0};
     qint64 netSize{0};
+    QString error;
+    bool cancelled{false};
+};
+
+struct CleanupPreflightJobResult
+{
+    QString rootId;
+    QString afterId;
+    quint64 generation{0};
+    foldersnap::CleanupPreflightResult result;
     QString error;
     bool cancelled{false};
 };
@@ -98,6 +109,10 @@ class AppState : public QObject
         bool cleanupReviewed READ cleanupReviewed WRITE setCleanupReviewed NOTIFY cleanupChanged)
     Q_PROPERTY(
         QString cleanupResult READ cleanupResult WRITE setCleanupResult NOTIFY cleanupChanged)
+    Q_PROPERTY(bool cleanupPreflighting READ cleanupPreflighting NOTIFY cleanupChanged)
+    Q_PROPERTY(int cleanupReadyCount READ cleanupReadyCount NOTIFY cleanupChanged)
+    Q_PROPERTY(int cleanupBlockedCount READ cleanupBlockedCount NOTIFY cleanupChanged)
+    Q_PROPERTY(int cleanupAlreadyMissingCount READ cleanupAlreadyMissingCount NOTIFY cleanupChanged)
     Q_PROPERTY(bool closeToTray READ closeToTray WRITE setCloseToTray NOTIFY preferencesChanged)
     Q_PROPERTY(bool launchAtStartup READ launchAtStartup WRITE setLaunchAtStartup NOTIFY
                    preferencesChanged)
@@ -289,6 +304,22 @@ class AppState : public QObject
     {
         return m_cleanupResult;
     }
+    [[nodiscard]] bool cleanupPreflighting() const
+    {
+        return m_cleanupPreflighting;
+    }
+    [[nodiscard]] int cleanupReadyCount() const
+    {
+        return m_cleanupReadyCount;
+    }
+    [[nodiscard]] int cleanupBlockedCount() const
+    {
+        return m_cleanupBlockedCount;
+    }
+    [[nodiscard]] int cleanupAlreadyMissingCount() const
+    {
+        return m_cleanupAlreadyMissingCount;
+    }
     [[nodiscard]] bool closeToTray() const
     {
         return m_closeToTray;
@@ -397,6 +428,9 @@ class AppState : public QObject
     void startExport(const QString &firstSnapshotId, const QString &secondSnapshotId,
                      const QString &format, const QUrl &destination);
     void setExportError(const QString &error);
+    void startCleanupPreflight();
+    void finishCleanupPreflight();
+    void cancelCleanupPreflight();
     void rebuildCleanupCandidates();
     [[nodiscard]] foldersnap::WatchedRoot *currentConfigurationRoot();
     [[nodiscard]] const foldersnap::WatchedRoot *currentConfigurationRoot() const;
@@ -449,6 +483,11 @@ class AppState : public QObject
     QString m_cleanupSearch;
     bool m_cleanupReviewed{false};
     QString m_cleanupResult;
+    bool m_cleanupPreflighting{false};
+    int m_cleanupReadyCount{0};
+    int m_cleanupBlockedCount{0};
+    int m_cleanupAlreadyMissingCount{0};
+    quint64 m_cleanupPreflightGeneration{0};
     bool m_closeToTray{true};
     bool m_launchAtStartup{false};
     bool m_notifyScheduledSuccess{false};
@@ -456,5 +495,6 @@ class AppState : public QObject
     std::unique_ptr<foldersnap::ScanCoordinator> m_scanCoordinator;
     std::unique_ptr<foldersnap::ExportCoordinator> m_exportCoordinator;
     std::unique_ptr<QFutureWatcher<ComparisonJobResult>> m_comparisonWatcher;
+    std::unique_ptr<QFutureWatcher<CleanupPreflightJobResult>> m_cleanupPreflightWatcher;
     QTimer m_scheduleTimer;
 };

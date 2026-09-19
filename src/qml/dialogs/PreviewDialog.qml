@@ -502,6 +502,7 @@ Dialog {
                     id: candidate
                     required property var modelData
                     readonly property bool selectable: modelData.cleanupSelectable !== false
+                    readonly property string preflightStatus: modelData.preflightStatus || ""
                     width: ListView.view.width
                     implicitHeight: 44
                     tristate: true
@@ -550,7 +551,16 @@ Dialog {
                     contentItem: LabelText {
                         text: candidate.text + "   ·   " + (candidate.modelData.folder ? "Total " : "") + candidate.modelData.after
                         leftPadding: 60 + candidate.modelData.depth * 16
+                        rightPadding: candidate.preflightStatus === "" ? 0 : 112
                         font.pixelSize: 12
+                    }
+                    Badge {
+                        visible: candidate.preflightStatus !== ""
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: candidate.modelData.preflightStatusLabel || ""
+                        tone: candidate.preflightStatus === "ready" ? Theme.accent : candidate.preflightStatus === "already_missing" ? Theme.muted : Theme.warning
                     }
                     background: Rectangle {
                         radius: 7
@@ -567,15 +577,40 @@ Dialog {
             }
             Panel {
                 Layout.fillWidth: true
-                implicitHeight: 66
+                objectName: "cleanupPreflightSummary"
+                implicitHeight: dialog.appState.cleanupReviewed ? 92 : 66
                 color: "#2c332b"
                 border.color: "#485b43"
-                BodyText {
+                ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 14
-                    font.pixelSize: 11
-                    color: Theme.warning
-                    text: "Cleanup is intentionally disabled until a safe, transactional file operation is implemented."
+                    spacing: 8
+                    BodyText {
+                        Layout.fillWidth: true
+                        font.pixelSize: 11
+                        color: dialog.appState.cleanupPreflighting ? Theme.accent : Theme.warning
+                        text: dialog.appState.cleanupPreflighting ? "Checking live paths…" : dialog.appState.cleanupReviewed ? "Read-only safety review complete." : dialog.appState.cleanupResult !== "" ? dialog.appState.cleanupResult : dialog.appState.cleanupSelection.length === 0 ? "Select items to check their live state." : "Select items to run the safety review."
+                    }
+                    RowLayout {
+                        visible: dialog.appState.cleanupReviewed
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Badge {
+                            text: dialog.appState.cleanupReadyCount + " Ready"
+                            tone: Theme.accent
+                        }
+                        Badge {
+                            text: dialog.appState.cleanupBlockedCount + " Blocked"
+                            tone: Theme.warning
+                        }
+                        Badge {
+                            text: dialog.appState.cleanupAlreadyMissingCount + " Already missing"
+                            tone: Theme.muted
+                        }
+                        Item {
+                            Layout.fillWidth: true
+                        }
+                    }
                 }
             }
         }

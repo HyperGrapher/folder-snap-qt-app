@@ -1,6 +1,7 @@
 #include "AppState.h"
 
 #include <algorithm>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -18,6 +19,7 @@
 #include <QUrl>
 #include <QtConcurrent>
 
+#include "cleanup/CleanupPreflight.h"
 #include "diff/ComparisonTree.h"
 #include "diff/DiffEngine.h"
 #include "domain/DomainError.h"
@@ -311,6 +313,106 @@ ComparisonJobResult compareSnapshots(const foldersnap::StoragePaths &paths, cons
     }
     return result;
 }
+
+CleanupPreflightJobResult runCleanupPreflight(
+    const foldersnap::StoragePaths &paths, const foldersnap::RootPath &root, const QString &rootId,
+    const QString &afterId, const QVariantList &candidateRows, const QStringList &selectedPaths,
+    quint64 generation, const foldersnap::CleanupPreflight::CancellationCallback &cancelled)
+{
+    CleanupPreflightJobResult result;
+    result.rootId = rootId;
+    result.afterId = afterId;
+    result.generation = generation;
+    try
+    {
+        if (cancelled && cancelled())
+        {
+            result.cancelled = true;
+            return result;
+        }
+        const foldersnap::Snapshot snapshot =
+            foldersnap::SnapshotStore(paths).loadSnapshot(afterId);
+        QHash<QString, foldersnap::SnapshotEntry> entriesByPath;
+        for (const foldersnap::SnapshotEntry &entry : snapshot.entries)
+        {
+            entriesByPath.insert(entry.path, entry);
+        }
+
+        QList<foldersnap::CleanupCandidate> candidates;
+        candidates.reserve(candidateRows.size());
+        for (const QVariant &value : candidateRows)
+        {
+            if (cancelled && cancelled())
+            {
+                result.cancelled = true;
+                return result;
+            }
+            const QString path = value.toMap().value("path").toString();
+            const auto entry = entriesByPath.constFind(path);
+            if (entry == entriesByPath.cend())
+            {
+                result.error =
+                    QString("The cleanup candidate is missing from snapshot %1.").arg(afterId);
+                return result;
+            }
+            candidates.append({*entry});
+        }
+        result.result =
+            foldersnap::CleanupPreflight::inspect(root, candidates, selectedPaths, cancelled);
+        result.cancelled = result.result.cancelled || (cancelled && cancelled());
+    }
+    catch (const foldersnap::DomainError &error)
+    {
+        result.error = error.message();
+    }
+    catch (const std::exception &error)
+    {
+        result.error = QString::fromUtf8(error.what());
+    }
+    catch (...)
+    {
+        result.error = "Unexpected cleanup preflight failure.";
+    }
+    return result;
+}
+
+QString cleanupStatusLabel(foldersnap::CleanupStatus status)
+{
+    switch (status)
+    {
+    case foldersnap::CleanupStatus::Ready:
+        return "Ready";
+    case foldersnap::CleanupStatus::AlreadyMissing:
+        return "Already missing";
+    case foldersnap::CleanupStatus::ChangedSinceSnapshot:
+        return "Changed";
+    case foldersnap::CleanupStatus::TypeChanged:
+        return "Type changed";
+    case foldersnap::CleanupStatus::OutsideRootOrInvalid:
+        return "Invalid or outside root";
+    case foldersnap::CleanupStatus::AccessDeniedOrUnreadable:
+        return "Unreadable";
+    case foldersnap::CleanupStatus::ContainsUntrackedContent:
+        return "Untracked content";
+    case foldersnap::CleanupStatus::Failed:
+        return "Failed";
+    }
+    return "Failed";
+}
+
+bool clearCleanupPreflightFields(QVariantList &rows)
+{
+    bool changed = false;
+    for (QVariant &value : rows)
+    {
+        QVariantMap row = value.toMap();
+        changed = row.remove("preflightStatus") > 0 || changed;
+        changed = row.remove("preflightStatusLabel") > 0 || changed;
+        changed = row.remove("preflightDetail") > 0 || changed;
+        value = row;
+    }
+    return changed;
+}
 } // namespace
 
 AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths())
@@ -333,6 +435,7 @@ AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths()
     m_scanCoordinator = std::make_unique<foldersnap::ScanCoordinator>(this);
     m_exportCoordinator = std::make_unique<foldersnap::ExportCoordinator>(this);
     m_comparisonWatcher = std::make_unique<QFutureWatcher<ComparisonJobResult>>(this);
+    m_cleanupPreflightWatcher = std::make_unique<QFutureWatcher<CleanupPreflightJobResult>>(this);
     connect(m_scanCoordinator.get(), &foldersnap::ScanCoordinator::activeChanged, this,
             [this](const QString &rootId, bool active)
             {
@@ -373,6 +476,8 @@ AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths()
             });
     connect(m_comparisonWatcher.get(), &QFutureWatcher<ComparisonJobResult>::finished, this,
             &AppState::finishComparison);
+    connect(m_cleanupPreflightWatcher.get(), &QFutureWatcher<CleanupPreflightJobResult>::finished,
+            this, &AppState::finishCleanupPreflight);
     connect(m_exportCoordinator.get(), &foldersnap::ExportCoordinator::activeChanged, this,
             [this](bool active)
             {
@@ -592,6 +697,9 @@ void AppState::setCleanupSelection(const QVariantList &selection)
     }
     m_cleanupSelection = normalized;
     m_cleanupSelectedPaths = selectedPaths;
+    cancelCleanupPreflight();
+    const bool rowsChanged = clearCleanupPreflightFields(m_cleanupRows);
+    const bool candidatesChanged = clearCleanupPreflightFields(m_cleanupCandidates);
     m_cleanupPartialPaths.clear();
     m_cleanupSelectedBytes = 0;
     for (const QString &selectedPath : std::as_const(selectedPaths))
@@ -612,7 +720,19 @@ void AppState::setCleanupSelection(const QVariantList &selection)
         }
     }
     m_cleanupReviewed = false;
+    m_cleanupResult.clear();
+    m_cleanupReadyCount = 0;
+    m_cleanupBlockedCount = 0;
+    m_cleanupAlreadyMissingCount = 0;
+    if (rowsChanged || candidatesChanged)
+    {
+        emit cleanupCandidatesChanged();
+    }
     emit cleanupChanged();
+    if (!m_cleanupSelection.isEmpty())
+    {
+        startCleanupPreflight();
+    }
 }
 
 void AppState::setCleanupSearch(const QString &search)
@@ -642,6 +762,141 @@ void AppState::setCleanupResult(const QString &result)
         return;
     }
     m_cleanupResult = result;
+    emit cleanupChanged();
+}
+
+void AppState::cancelCleanupPreflight()
+{
+    ++m_cleanupPreflightGeneration;
+    if (m_cleanupPreflightWatcher && m_cleanupPreflightWatcher->isRunning())
+    {
+        m_cleanupPreflightWatcher->cancel();
+    }
+    m_cleanupPreflighting = false;
+}
+
+void AppState::startCleanupPreflight()
+{
+    if (m_cleanupSelection.isEmpty())
+    {
+        return;
+    }
+    const auto *root = currentConfigurationRoot();
+    if (!root || m_afterId.isEmpty())
+    {
+        m_cleanupResult = "Choose a completed comparison before checking cleanup items.";
+        emit cleanupChanged();
+        return;
+    }
+
+    foldersnap::RootPath normalizedRoot;
+    try
+    {
+        normalizedRoot = foldersnap::normalizeRootPath(root->path);
+    }
+    catch (const foldersnap::DomainError &error)
+    {
+        m_cleanupResult = "Preflight failed · " + error.message();
+        emit cleanupChanged();
+        return;
+    }
+
+    if (m_cleanupPreflightWatcher && m_cleanupPreflightWatcher->isRunning())
+    {
+        m_cleanupPreflightWatcher->cancel();
+    }
+    const quint64 generation = ++m_cleanupPreflightGeneration;
+    const QString rootId = root->rootId;
+    const QString afterId = m_afterId;
+    const foldersnap::StoragePaths paths = m_paths;
+    const QVariantList candidateRows = m_cleanupCandidates;
+    QStringList selectedPaths;
+    selectedPaths.reserve(m_cleanupSelection.size());
+    for (const QVariant &value : m_cleanupSelection)
+    {
+        selectedPaths.append(value.toString());
+    }
+
+    m_cleanupPreflighting = true;
+    m_cleanupReviewed = false;
+    m_cleanupResult = "Checking live paths…";
+    emit cleanupChanged();
+    m_cleanupPreflightWatcher->setFuture(QtConcurrent::run(
+        [paths, normalizedRoot, rootId, afterId, candidateRows, selectedPaths,
+         generation](QPromise<CleanupPreflightJobResult> &promise)
+        {
+            const CleanupPreflightJobResult result = runCleanupPreflight(
+                paths, normalizedRoot, rootId, afterId, candidateRows, selectedPaths, generation,
+                [&promise]() { return promise.isCanceled(); });
+            if (!result.cancelled && !promise.isCanceled())
+            {
+                promise.addResult(result);
+            }
+        }));
+}
+
+void AppState::finishCleanupPreflight()
+{
+    if (m_cleanupPreflightWatcher->future().isCanceled() ||
+        m_cleanupPreflightWatcher->future().resultCount() == 0)
+    {
+        return;
+    }
+    const CleanupPreflightJobResult result = m_cleanupPreflightWatcher->result();
+    const auto *root = currentConfigurationRoot();
+    if (result.generation != m_cleanupPreflightGeneration || !root ||
+        result.rootId != root->rootId || result.afterId != m_afterId)
+    {
+        return;
+    }
+
+    m_cleanupPreflighting = false;
+    if (!result.error.isEmpty())
+    {
+        m_cleanupReviewed = false;
+        m_cleanupResult = "Preflight failed · " + result.error;
+        m_cleanupReadyCount = 0;
+        m_cleanupBlockedCount = 0;
+        m_cleanupAlreadyMissingCount = 0;
+        clearCleanupPreflightFields(m_cleanupRows);
+        clearCleanupPreflightFields(m_cleanupCandidates);
+        emit cleanupCandidatesChanged();
+        emit cleanupChanged();
+        return;
+    }
+
+    QHash<QString, foldersnap::CleanupPreflightItem> itemsByPath;
+    for (const foldersnap::CleanupPreflightItem &item : result.result.items)
+    {
+        itemsByPath.insert(item.path, item);
+    }
+    const auto apply = [&itemsByPath](QVariantList &rows)
+    {
+        for (QVariant &value : rows)
+        {
+            QVariantMap row = value.toMap();
+            const auto item = itemsByPath.constFind(row.value("path").toString());
+            if (item == itemsByPath.cend())
+            {
+                continue;
+            }
+            row["preflightStatus"] = foldersnap::cleanupStatusName(item->status);
+            row["preflightStatusLabel"] = cleanupStatusLabel(item->status);
+            row["preflightDetail"] = item->detail;
+            value = row;
+        }
+    };
+    apply(m_cleanupRows);
+    apply(m_cleanupCandidates);
+    m_cleanupReadyCount = result.result.summary.readyCount;
+    m_cleanupBlockedCount = result.result.summary.blockedCount;
+    m_cleanupAlreadyMissingCount = result.result.summary.alreadyMissingCount;
+    m_cleanupReviewed = true;
+    m_cleanupResult = QString("%1 ready · %2 blocked · %3 already missing")
+                          .arg(m_cleanupReadyCount)
+                          .arg(m_cleanupBlockedCount)
+                          .arg(m_cleanupAlreadyMissingCount);
+    emit cleanupCandidatesChanged();
     emit cleanupChanged();
 }
 
@@ -1096,6 +1351,9 @@ void AppState::openSheet(const QString &kind)
         emit detailIdChanged();
     }
     const bool cleanupFilterChanged = !m_cleanupSearch.isEmpty();
+    cancelCleanupPreflight();
+    const bool cleanupRowsChanged = clearCleanupPreflightFields(m_cleanupRows);
+    const bool cleanupCandidateRowsChanged = clearCleanupPreflightFields(m_cleanupCandidates);
     m_cleanupSelection.clear();
     m_cleanupSelectedPaths.clear();
     m_cleanupPartialPaths.clear();
@@ -1103,11 +1361,14 @@ void AppState::openSheet(const QString &kind)
     m_cleanupSearch.clear();
     m_cleanupReviewed = false;
     m_cleanupResult.clear();
-    emit cleanupChanged();
-    if (cleanupFilterChanged)
+    m_cleanupReadyCount = 0;
+    m_cleanupBlockedCount = 0;
+    m_cleanupAlreadyMissingCount = 0;
+    if (cleanupFilterChanged || cleanupRowsChanged || cleanupCandidateRowsChanged)
     {
         emit cleanupCandidatesChanged();
     }
+    emit cleanupChanged();
     if (kind == "export" || kind == "exportComparison")
     {
         setExportError({});
@@ -1605,6 +1866,7 @@ void AppState::invalidateComparison()
 
 void AppState::rebuildCleanupCandidates()
 {
+    cancelCleanupPreflight();
     m_cleanupCandidates.clear();
     m_cleanupRows.clear();
     m_cleanupCandidates.reserve(m_addedCount);
@@ -1648,6 +1910,10 @@ void AppState::rebuildCleanupCandidates()
     m_cleanupSelectedBytes = 0;
     m_cleanupSearch.clear();
     m_cleanupReviewed = false;
+    m_cleanupResult.clear();
+    m_cleanupReadyCount = 0;
+    m_cleanupBlockedCount = 0;
+    m_cleanupAlreadyMissingCount = 0;
     emit cleanupCandidatesChanged();
     emit cleanupChanged();
 }

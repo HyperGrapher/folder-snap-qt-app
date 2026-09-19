@@ -30,3 +30,8 @@ and tracked metadata, verifies stored reparse targets, and recursively checks se
 content without following reparse directories. A selected directory inherits a blocked status from
 any blocked selected descendant; `already_missing` descendants do not block their parent. The
 preflight result is safe to display but does not mutate the watched folder.
+
+The cleanup review runs preflight asynchronously after a non-empty selection. Its result is
+discarded when the comparison, watched root, or selection changes, so the modal never presents a
+stale safety decision. The review exposes per-item status badges and Ready, Blocked, and Already
+Missing totals; the primary cleanup action remains disabled until the later execution milestone.
