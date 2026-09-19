@@ -506,7 +506,7 @@ AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths()
     }
     m_closeToTray = m_configuration.closeToTray;
     m_launchAtStartup = m_configuration.launchAtStartup;
-    m_notifyScheduledSuccess = m_configuration.notifyScheduledSuccess;
+    m_notifyScheduledBefore = m_configuration.notifyScheduledBefore;
     m_retention = m_configuration.defaultRetention;
     m_scanCoordinator = std::make_unique<foldersnap::ScanCoordinator>(this);
     m_exportCoordinator = std::make_unique<foldersnap::ExportCoordinator>(this);
@@ -1141,15 +1141,25 @@ void AppState::setLaunchAtStartup(bool enabled)
     emit preferencesChanged();
 }
 
-void AppState::setNotifyScheduledSuccess(bool enabled)
+void AppState::setNotifyScheduledBefore(bool enabled)
 {
-    if (m_notifyScheduledSuccess == enabled)
+    if (m_notifyScheduledBefore == enabled)
     {
         return;
     }
-    m_notifyScheduledSuccess = enabled;
-    m_configuration.notifyScheduledSuccess = enabled;
+    m_notifyScheduledBefore = enabled;
+    m_configuration.notifyScheduledBefore = enabled;
     saveConfiguration();
+
+    if (!enabled)
+    {
+        const QStringList pendingRootIds = m_pendingScheduledRoots.values();
+        for (const QString &rootId : pendingRootIds)
+        {
+            startScheduledSnapshot(rootId);
+        }
+    }
+
     emit preferencesChanged();
 }
 
@@ -1487,6 +1497,10 @@ void AppState::requestSnapshot(const foldersnap::WatchedRoot &root,
     catch (const foldersnap::DomainError &)
     {
         request.protectedSubtree.reset();
+    }
+    if (trigger == foldersnap::SnapshotTrigger::Scheduled && !m_notifyScheduledBefore)
+    {
+        emit scheduledSnapshotStarted(root.rootId);
     }
     if (const auto *current = currentConfigurationRoot(); current && current->rootId == root.rootId)
     {
@@ -2007,8 +2021,7 @@ void AppState::finishScan(const foldersnap::ScanJobResult &result)
         setScanError({});
     }
     refreshModels();
-    if (isCurrent &&
-        (result.trigger == foldersnap::SnapshotTrigger::Manual || m_notifyScheduledSuccess))
+    if (isCurrent && result.trigger == foldersnap::SnapshotTrigger::Manual)
     {
         setToast(QString("Snapshot saved · %1 files · %2")
                      .arg(formatCount(result.commit.record.fileCount),
@@ -2076,7 +2089,16 @@ void AppState::evaluateSchedules()
                 foldersnap::ScheduleCalculator::evaluate(root.schedule, now, timeZone);
             if (decision.shouldRun)
             {
-                if (!m_pendingScheduledRoots.contains(root.rootId))
+                if (!m_notifyScheduledBefore)
+                {
+                    if (decision.nextDueAtUtc)
+                    {
+                        root.schedule.nextDueAtUtc = decision.nextDueAtUtc;
+                        configurationChanged = true;
+                    }
+                    requestSnapshot(root, foldersnap::SnapshotTrigger::Scheduled);
+                }
+                else if (!m_pendingScheduledRoots.contains(root.rootId))
                 {
                     m_pendingScheduledRoots.insert(root.rootId);
                     if (decision.nextDueAtUtc)

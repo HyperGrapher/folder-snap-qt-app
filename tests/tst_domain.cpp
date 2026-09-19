@@ -74,6 +74,12 @@ class DomainTest final : public QObject
         const foldersnap::Configuration defaults;
         QVERIFY(foldersnap::decodeConfiguration(foldersnap::encodeConfiguration(defaults)) ==
                 defaults);
+        auto legacyConfiguration = QJsonDocument::fromJson(fixture("config")).object();
+        legacyConfiguration.remove("notifyScheduledBefore");
+        legacyConfiguration["notifyScheduledSuccess"] = true;
+        QVERIFY(foldersnap::decodeConfiguration(
+                    QJsonDocument(legacyConfiguration).toJson(QJsonDocument::Compact))
+                    .notifyScheduledBefore);
         QVERIFY(!config.roots.first().schedule.nextDueAtUtc);
         QCOMPARE(config.roots.last().schedule.dayOfMonth, 31);
     }

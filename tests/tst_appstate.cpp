@@ -369,6 +369,7 @@ class AppStateTest final : public QObject
             QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() * 1000000 - kTenHoursInNanoseconds};
 
         foldersnap::Configuration configuration;
+        configuration.notifyScheduledBefore = true;
         configuration.roots.append(root);
         const foldersnap::StoragePaths paths =
             foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
@@ -401,6 +402,41 @@ class AppStateTest final : public QObject
         QVERIFY(*persisted.roots.first().schedule.nextDueAtUtc >
                 foldersnap::UtcTimestamp{QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() *
                                          1000000});
+    }
+
+    void runsScheduledSnapshotWithoutNotificationWhenDisabled()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+
+        const foldersnap::RootPath normalized =
+            foldersnap::normalizeRootPath(watchedDirectory.path());
+        foldersnap::WatchedRoot root;
+        root.rootId = foldersnap::createId();
+        root.displayName = "Quiet scheduled folder";
+        root.path = normalized.displayPath;
+        root.normalizedPath = normalized.identityPath;
+        root.schedule.kind = foldersnap::ScheduleKind::Interval;
+        root.schedule.intervalHours = 1;
+        root.schedule.nextDueAtUtc = foldersnap::UtcTimestamp{
+            QDateTime::currentDateTimeUtc().addSecs(-5 * 60).toMSecsSinceEpoch() * 1000000};
+
+        foldersnap::Configuration configuration;
+        configuration.roots.append(root);
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        foldersnap::ConfigurationStore(paths).saveConfiguration(configuration);
+
+        AppState state;
+        QSignalSpy dueSpy(&state, &AppState::scheduledSnapshotDue);
+        QTRY_COMPARE_WITH_TIMEOUT(state.snapshots().size(), 1, 5000);
+        QCOMPARE(dueSpy.count(), 0);
+        QCOMPARE(state.snapshots().first().toMap().value("trigger").toString(),
+                 QString("Scheduled"));
     }
 
     void doesNotScheduleArchivedRoots()
@@ -463,6 +499,7 @@ class AppStateTest final : public QObject
             QDateTime::currentDateTimeUtc().addSecs(-5 * 60).toMSecsSinceEpoch() * 1000000};
 
         foldersnap::Configuration configuration;
+        configuration.notifyScheduledBefore = true;
         configuration.roots.append(root);
         const foldersnap::StoragePaths paths =
             foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());

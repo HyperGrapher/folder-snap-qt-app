@@ -34,6 +34,10 @@ WindowsNotificationController::WindowsNotificationController(AppState &appState,
             &WindowsNotificationController::showNextScheduledPrompt);
     connect(&m_appState, &AppState::scheduledSnapshotDue, this,
             &WindowsNotificationController::enqueueScheduledPrompt);
+    connect(&m_appState, &AppState::scheduledSnapshotStarted, this,
+            &WindowsNotificationController::suppressScheduledNotifications);
+    connect(&m_appState, &AppState::preferencesChanged, this,
+            &WindowsNotificationController::updateNotificationPreference);
     connect(&m_appState, &AppState::scanStarted, this,
             &WindowsNotificationController::showScanStarted);
     connect(&m_appState, &AppState::scanProgressed, this,
@@ -147,6 +151,40 @@ void WindowsNotificationController::enqueueScheduledPrompt(const QString &rootId
     m_scheduledPrompts.enqueue(prompt);
 }
 
+void WindowsNotificationController::suppressScheduledNotifications(const QString &rootId)
+{
+    if (rootId.isEmpty())
+    {
+        return;
+    }
+    m_suppressedScheduledRoots.insert(rootId);
+    if (m_activePromptRootId == rootId)
+    {
+        m_activePromptRootId.clear();
+        hidePopup();
+    }
+    if (m_activeScanRootId == rootId)
+    {
+        m_activeScanRootId.clear();
+        hidePopup();
+    }
+}
+
+void WindowsNotificationController::updateNotificationPreference()
+{
+    if (m_appState.notifyScheduledBefore())
+    {
+        m_suppressedScheduledRoots.clear();
+        return;
+    }
+    m_scheduledPrompts.clear();
+    if (m_popupMode == PopupMode::ScheduledPrompt)
+    {
+        m_activePromptRootId.clear();
+        hidePopup();
+    }
+}
+
 void WindowsNotificationController::showNextScheduledPrompt()
 {
     m_completionTimer.stop();
@@ -184,6 +222,10 @@ void WindowsNotificationController::showScheduledPrompt(const ScheduledPrompt &p
 
 void WindowsNotificationController::showScanStarted(const QString &rootId)
 {
+    if (m_suppressedScheduledRoots.contains(rootId))
+    {
+        return;
+    }
     if (m_popupMode == PopupMode::ScheduledPrompt && !m_activePromptRootId.isEmpty())
     {
         m_scheduledPrompts.prepend({m_activePromptRootId, QStringLiteral("Scheduled snapshot")});
@@ -204,6 +246,10 @@ void WindowsNotificationController::showScanStarted(const QString &rootId)
 
 void WindowsNotificationController::showScanProgress(const QString &rootId, int progress)
 {
+    if (m_suppressedScheduledRoots.contains(rootId))
+    {
+        return;
+    }
     if (m_popupMode != PopupMode::Scanning || rootId != m_activeScanRootId)
     {
         return;
@@ -213,6 +259,10 @@ void WindowsNotificationController::showScanProgress(const QString &rootId, int 
 
 void WindowsNotificationController::showScanCompleted(const QString &rootId)
 {
+    if (m_suppressedScheduledRoots.remove(rootId) > 0)
+    {
+        return;
+    }
     if (!m_activeScanRootId.isEmpty() && rootId != m_activeScanRootId)
     {
         return;
@@ -230,6 +280,10 @@ void WindowsNotificationController::showScanCompleted(const QString &rootId)
 
 void WindowsNotificationController::showScanFailed(const QString &rootId, const QString &error)
 {
+    if (m_suppressedScheduledRoots.remove(rootId) > 0)
+    {
+        return;
+    }
     if (!m_activeScanRootId.isEmpty() && rootId != m_activeScanRootId)
     {
         return;

@@ -477,7 +477,7 @@ QByteArray encodeConfiguration(const Configuration &configuration)
          {"defaultRetention", configuration.defaultRetention},
          {"defaultIgnoreRules", QJsonArray::fromStringList(configuration.defaultIgnoreRules)},
          {"launchAtStartup", configuration.launchAtStartup},
-         {"notifyScheduledSuccess", configuration.notifyScheduledSuccess},
+         {"notifyScheduledBefore", configuration.notifyScheduledBefore},
          {"closeToTray", configuration.closeToTray}});
 }
 
@@ -488,7 +488,14 @@ Configuration decodeConfiguration(const QByteArray &json)
     configuration.defaultRetention = smallInteger(root, "defaultRetention");
     configuration.defaultIgnoreRules = strings(root, "defaultIgnoreRules");
     configuration.launchAtStartup = boolean(root, "launchAtStartup");
-    configuration.notifyScheduledSuccess = boolean(root, "notifyScheduledSuccess");
+    if (root.contains("notifyScheduledBefore"))
+    {
+        configuration.notifyScheduledBefore = boolean(root, "notifyScheduledBefore");
+    }
+    else
+    {
+        configuration.notifyScheduledBefore = boolean(root, "notifyScheduledSuccess");
+    }
     configuration.closeToTray = boolean(root, "closeToTray");
     for (const auto &value : array(root["roots"], "roots"))
     {

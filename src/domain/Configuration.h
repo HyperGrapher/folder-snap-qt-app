@@ -53,7 +53,7 @@ struct Configuration
     int defaultRetention{50};
     QStringList defaultIgnoreRules{"node_modules/", "build/", ".git/"};
     bool launchAtStartup{false};
-    bool notifyScheduledSuccess{false};
+    bool notifyScheduledBefore{false};
     bool closeToTray{true};
     bool operator==(const Configuration &) const = default;
 };

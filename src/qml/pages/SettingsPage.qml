@@ -114,11 +114,11 @@ ScrollView {
                 }
                 SettingRow {
                     Layout.fillWidth: true
-                    title: "Notify after scheduled snapshots"
-                    description: "A small confirmation when your next moment is saved."
-                    checked: page.appState.notifyScheduledSuccess
+                    title: "Notify before scheduled snapshots"
+                    description: "Ask before starting each scheduled metadata snapshot."
+                    checked: page.appState.notifyScheduledBefore
                     animationsEnabled: page.motion.transitionsEnabled
-                    onToggled: value => page.appState.notifyScheduledSuccess = value
+                    onToggled: value => page.appState.notifyScheduledBefore = value
                 }
             }
         }

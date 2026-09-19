@@ -133,8 +133,8 @@ class AppState : public QObject
     Q_PROPERTY(bool closeToTray READ closeToTray WRITE setCloseToTray NOTIFY preferencesChanged)
     Q_PROPERTY(bool launchAtStartup READ launchAtStartup WRITE setLaunchAtStartup NOTIFY
                    preferencesChanged)
-    Q_PROPERTY(bool notifyScheduledSuccess READ notifyScheduledSuccess WRITE
-                   setNotifyScheduledSuccess NOTIFY preferencesChanged)
+    Q_PROPERTY(bool notifyScheduledBefore READ notifyScheduledBefore WRITE setNotifyScheduledBefore
+                   NOTIFY preferencesChanged)
     Q_PROPERTY(int retention READ retention WRITE setRetention NOTIFY preferencesChanged)
     Q_PROPERTY(QString dataDirectory READ dataDirectory CONSTANT)
 
@@ -361,9 +361,9 @@ class AppState : public QObject
     {
         return m_launchAtStartup;
     }
-    [[nodiscard]] bool notifyScheduledSuccess() const
+    [[nodiscard]] bool notifyScheduledBefore() const
     {
-        return m_notifyScheduledSuccess;
+        return m_notifyScheduledBefore;
     }
     [[nodiscard]] int retention() const
     {
@@ -390,7 +390,7 @@ class AppState : public QObject
     void setCleanupResult(const QString &result);
     void setCloseToTray(bool enabled);
     void setLaunchAtStartup(bool enabled);
-    void setNotifyScheduledSuccess(bool enabled);
+    void setNotifyScheduledBefore(bool enabled);
     void setRetention(int retention);
 
     Q_INVOKABLE void chooseRoot(int index);
@@ -437,6 +437,7 @@ class AppState : public QObject
     void scanCompleted(const QString &rootId, const QString &snapshotId, qint64 warningCount);
     void scanFailed(const QString &rootId, const QString &error);
     void scheduledSnapshotDue(const QString &rootId, const QString &displayName);
+    void scheduledSnapshotStarted(const QString &rootId);
     void configurationChanged();
     void comparingChanged();
     void comparisonChanged();
@@ -537,7 +538,7 @@ class AppState : public QObject
     QHash<QString, foldersnap::UtcTimestamp> m_snoozedScheduledRoots;
     bool m_closeToTray{true};
     bool m_launchAtStartup{false};
-    bool m_notifyScheduledSuccess{false};
+    bool m_notifyScheduledBefore{false};
     int m_retention{50};
     std::unique_ptr<foldersnap::ScanCoordinator> m_scanCoordinator;
     std::unique_ptr<foldersnap::ExportCoordinator> m_exportCoordinator;

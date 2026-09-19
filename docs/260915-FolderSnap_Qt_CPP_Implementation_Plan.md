@@ -195,7 +195,7 @@ Store:
 - `defaultRetention`.
 - `defaultIgnoreRules` used only when adding future roots.
 - `launchAtStartup`.
-- `notifyScheduledSuccess`.
+- `notifyScheduledBefore`.
 - `closeToTray`.
 
 Defaults:
@@ -203,7 +203,7 @@ Defaults:
 - Retention: 50 snapshots per root.
 - Exclusions: `node_modules/`, `build/`, `.git/`.
 - Close to tray: true.
-- Startup and successful-schedule notifications: false.
+- Startup and scheduled-snapshot notifications: false.
 
 Valid retention choices are 10, 25, 50, 100, or 0 for unlimited.
 

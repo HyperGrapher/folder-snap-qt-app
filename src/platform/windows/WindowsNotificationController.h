@@ -2,6 +2,7 @@
 
 #include <QQueue>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QTimer>
 
@@ -37,6 +38,8 @@ class WindowsNotificationController final : public QObject
 
     void createPopup();
     void enqueueScheduledPrompt(const QString &rootId, const QString &displayName);
+    void suppressScheduledNotifications(const QString &rootId);
+    void updateNotificationPreference();
     void showNextScheduledPrompt();
     void showScheduledPrompt(const ScheduledPrompt &prompt);
     void showScanStarted(const QString &rootId);
@@ -59,6 +62,7 @@ class WindowsNotificationController final : public QObject
     QPushButton *m_actionButton{nullptr};
     QPushButton *m_closeButton{nullptr};
     QQueue<ScheduledPrompt> m_scheduledPrompts;
+    QSet<QString> m_suppressedScheduledRoots;
     QTimer m_scheduledTimer;
     QTimer m_completionTimer;
     QString m_activePromptRootId;

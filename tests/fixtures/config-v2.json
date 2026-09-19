@@ -112,6 +112,6 @@
     ".git/"
   ],
   "launchAtStartup": true,
-  "notifyScheduledSuccess": true,
+  "notifyScheduledBefore": true,
   "closeToTray": false
 }
