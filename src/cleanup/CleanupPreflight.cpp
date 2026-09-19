@@ -183,6 +183,8 @@ QString statusDetail(CleanupStatus status, const QString &path)
         return "The live path could not be read safely.";
     case CleanupStatus::ContainsUntrackedContent:
         return "The directory contains content that is not selected for cleanup.";
+    case CleanupStatus::MovedToRecycleBin:
+        return {};
     case CleanupStatus::Failed:
         return "The live path could not be checked.";
     }
@@ -469,6 +471,8 @@ QString cleanupStatusName(CleanupStatus status)
         return "access_denied_or_unreadable";
     case CleanupStatus::ContainsUntrackedContent:
         return "contains_untracked_content";
+    case CleanupStatus::MovedToRecycleBin:
+        return "moved_to_recycle_bin";
     case CleanupStatus::Failed:
         return "failed";
     }

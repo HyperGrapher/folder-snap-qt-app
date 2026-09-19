@@ -34,4 +34,13 @@ preflight result is safe to display but does not mutate the watched folder.
 The cleanup review runs preflight asynchronously after a non-empty selection. Its result is
 discarded when the comparison, watched root, or selection changes, so the modal never presents a
 stale safety decision. The review exposes per-item status badges and Ready, Blocked, and Already
-Missing totals; the primary cleanup action remains disabled until the later execution milestone.
+Missing totals. The explicit cleanup action performs a second worker-side preflight immediately
+before mutation, processes deepest paths first, and keeps a parent directory blocked when a child
+move fails or when a final directory check finds new content.
+
+On Windows, each validated item is submitted to `IFileOperation` with Recycle Bin and undo flags.
+Shell failures and aborts are reported per item; FolderSnap never falls back to permanent
+deletion. Each attempt appends one compact JSONL event under FolderSnap's root-specific local
+data directory, preserving prior audit lines through an atomic rewrite. The modal reports moved,
+blocked, already-missing, and failed totals and keeps the originals restorable from the Recycle
+Bin.

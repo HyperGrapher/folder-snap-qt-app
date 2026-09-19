@@ -17,7 +17,7 @@ Dialog {
     anchors.centerIn: parent
     width: Math.min(570, parent ? parent.width - 48 : 570)
     padding: 24
-    closePolicy: appState.exporting ? Popup.NoAutoClose : Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    closePolicy: appState.exporting || appState.cleanupExecuting ? Popup.NoAutoClose : Popup.CloseOnEscape | Popup.CloseOnPressOutside
     visible: kind !== "" && kind !== "add"
     onClosed: appState.sheet = ""
     onKindChanged: {
@@ -112,7 +112,7 @@ Dialog {
             glyph: "close"
             primary: false
             quiet: true
-            enabled: !dialog.appState.exporting
+            enabled: !dialog.appState.exporting && !dialog.appState.cleanupExecuting
             onClicked: dialog.close()
         }
     }
@@ -120,7 +120,7 @@ Dialog {
         spacing: 16
         BodyText {
             Layout.fillWidth: true
-            text: dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Save a private, offline report. Snapshot data stays on this computer." : dialog.kind === "cleanup" ? "Added entries can be reviewed here. Moving live files is disabled until the safety workflow is implemented." : dialog.kind === "removeFolder" ? "This removes the watched-folder registration and all of its saved snapshot history. The real folder and its files are untouched." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
+            text: dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Save a private, offline report. Snapshot data stays on this computer." : dialog.kind === "cleanup" ? "Review Added entries, then move unchanged live items to the Windows Recycle Bin." : dialog.kind === "removeFolder" ? "This removes the watched-folder registration and all of its saved snapshot history. The real folder and its files are untouched." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
             font.pixelSize: 12
         }
         ColumnLayout {
@@ -479,6 +479,7 @@ Dialog {
                     primary: false
                     quiet: true
                     implicitHeight: 29
+                    enabled: !dialog.appState.cleanupExecuting && !dialog.appState.cleanupCompleted
                     onClicked: {
                         dialog.appState.cleanupReviewed = false;
                         dialog.appState.cleanupSelection = dialog.appState.cleanupSelection.length === dialog.appState.cleanupCandidates.length ? [] : dialog.appState.cleanupCandidates.map(row => row.path);
@@ -496,6 +497,7 @@ Dialog {
                 cacheBuffer: 88
                 spacing: 2
                 boundsBehavior: Flickable.StopAtBounds
+                enabled: !dialog.appState.cleanupExecuting && !dialog.appState.cleanupCompleted
                 ScrollBar.vertical: ScrollBar {}
                 model: dialog.appState.visibleCleanupCandidates
                 delegate: CheckBox {
@@ -506,7 +508,7 @@ Dialog {
                     width: ListView.view.width
                     implicitHeight: 44
                     tristate: true
-                    enabled: candidate.selectable
+                    enabled: candidate.selectable && !dialog.appState.cleanupExecuting && !dialog.appState.cleanupCompleted
                     checkState: {
                         if (!candidate.selectable)
                             return Qt.Unchecked;
@@ -578,7 +580,7 @@ Dialog {
             Panel {
                 Layout.fillWidth: true
                 objectName: "cleanupPreflightSummary"
-                implicitHeight: dialog.appState.cleanupReviewed ? 92 : 66
+                implicitHeight: dialog.appState.cleanupCompleted ? 116 : dialog.appState.cleanupReviewed ? 92 : 66
                 color: "#2c332b"
                 border.color: "#485b43"
                 ColumnLayout {
@@ -588,14 +590,15 @@ Dialog {
                     BodyText {
                         Layout.fillWidth: true
                         font.pixelSize: 11
-                        color: dialog.appState.cleanupPreflighting ? Theme.accent : Theme.warning
-                        text: dialog.appState.cleanupPreflighting ? "Checking live paths…" : dialog.appState.cleanupReviewed ? "Read-only safety review complete." : dialog.appState.cleanupResult !== "" ? dialog.appState.cleanupResult : dialog.appState.cleanupSelection.length === 0 ? "Select items to check their live state." : "Select items to run the safety review."
+                        color: dialog.appState.cleanupPreflighting || dialog.appState.cleanupExecuting ? Theme.accent : dialog.appState.cleanupCompleted ? Theme.accent : Theme.warning
+                        text: dialog.appState.cleanupExecuting ? "Rechecking live paths and moving only safe items…" : dialog.appState.cleanupPreflighting ? "Checking live paths…" : dialog.appState.cleanupCompleted ? "Cleanup finished. Moved items can be restored from the Recycle Bin." : dialog.appState.cleanupReviewed ? "Read-only safety review complete." : dialog.appState.cleanupResult !== "" ? dialog.appState.cleanupResult : dialog.appState.cleanupSelection.length === 0 ? "Select items to check their live state." : "Select items to run the safety review."
                     }
                     RowLayout {
                         visible: dialog.appState.cleanupReviewed
                         Layout.fillWidth: true
                         spacing: 6
                         Badge {
+                            visible: !dialog.appState.cleanupCompleted
                             text: dialog.appState.cleanupReadyCount + " Ready"
                             tone: Theme.accent
                         }
@@ -607,6 +610,16 @@ Dialog {
                             text: dialog.appState.cleanupAlreadyMissingCount + " Already missing"
                             tone: Theme.muted
                         }
+                        Badge {
+                            visible: dialog.appState.cleanupCompleted
+                            text: dialog.appState.cleanupMovedCount + " Moved"
+                            tone: Theme.accent
+                        }
+                        Badge {
+                            visible: dialog.appState.cleanupCompleted
+                            text: dialog.appState.cleanupFailedCount + " Failed"
+                            tone: Theme.warning
+                        }
                         Item {
                             Layout.fillWidth: true
                         }
@@ -615,8 +628,8 @@ Dialog {
             }
         }
         Badge {
-            visible: dialog.isDestructive
-            text: "Watched files are unaffected"
+            visible: dialog.kind === "cleanup" || dialog.isDestructive
+            text: dialog.kind === "cleanup" ? (dialog.appState.cleanupCompleted ? "Recycle Bin moves can be undone" : "Selected originals move to the Windows Recycle Bin") : "Watched files are unaffected"
             tone: Theme.warning
         }
         Rectangle {
@@ -629,7 +642,7 @@ Dialog {
             visible: dialog.kind !== "detail" && !dialog.isExport
             Layout.fillWidth: true
             LabelText {
-                text: "LOCAL METADATA · ORIGINALS UNTOUCHED"
+                text: dialog.kind === "cleanup" ? "WINDOWS RECYCLE BIN · UNDO AVAILABLE" : "LOCAL METADATA · ORIGINALS UNTOUCHED"
                 font.pixelSize: 8
                 font.letterSpacing: 0.8
                 color: Theme.muted
@@ -640,17 +653,23 @@ Dialog {
                 text: "Cancel"
                 primary: false
                 quiet: true
+                enabled: !dialog.appState.cleanupExecuting
                 onClicked: dialog.close()
             }
             ActionButton {
                 objectName: "dialogPrimaryButton"
                 animationsEnabled: dialog.motion.transitionsEnabled
-                text: dialog.kind === "folder" ? "Save preferences" : dialog.kind === "cleanup" ? "Cleanup unavailable" : dialog.kind === "removeFolder" ? "Remove folder and history" : dialog.isDestructive ? (dialog.kind === "clear" ? "Clear history" : "Delete snapshot") : "Done"
-                enabled: dialog.kind !== "cleanup"
-                primary: !dialog.isDestructive
-                danger: dialog.isDestructive
+                text: dialog.kind === "folder" ? "Save preferences" : dialog.kind === "cleanup" ? (dialog.appState.cleanupCompleted ? "Close" : dialog.appState.cleanupExecuting ? "Moving…" : "Move ready items to Recycle Bin") : dialog.kind === "removeFolder" ? "Remove folder and history" : dialog.isDestructive ? (dialog.kind === "clear" ? "Clear history" : "Delete snapshot") : "Done"
+                enabled: dialog.kind !== "cleanup" || dialog.appState.cleanupCompleted || (dialog.appState.cleanupReviewed && !dialog.appState.cleanupPreflighting && !dialog.appState.cleanupExecuting && dialog.appState.cleanupReadyCount > 0)
+                primary: dialog.kind === "cleanup" ? false : !dialog.isDestructive
+                danger: dialog.kind === "cleanup" || dialog.isDestructive
                 onClicked: {
                     if (dialog.kind === "cleanup") {
+                        if (dialog.appState.cleanupCompleted) {
+                            dialog.close();
+                        } else {
+                            dialog.appState.executeCleanup();
+                        }
                         return;
                     }
                     if (dialog.kind === "folder") {

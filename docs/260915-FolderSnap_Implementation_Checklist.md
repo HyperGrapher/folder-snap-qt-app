@@ -209,10 +209,10 @@ Exit: saved snapshots and completed comparisons export complete offline HTML and
 - [x] Implement containment, reparse-ancestor, live-type, metadata, link-target, and untracked-directory-content preflight checks.
 - [x] Propagate blocked descendants to selected parent directories.
 - [x] Present Ready, Blocked, and Already Missing results before explicit confirmation.
-- [ ] Re-run preflight immediately before mutation to close the time-of-check/time-of-use window.
-- [ ] Execute deepest-first through Windows `IFileOperation` with Recycle Bin/undo semantics.
-- [ ] Never fall back to permanent deletion.
-- [ ] Write an append-preserving JSONL audit and present per-item results.
+- [x] Re-run preflight immediately before mutation to close the time-of-check/time-of-use window.
+- [x] Execute deepest-first through Windows `IFileOperation` with Recycle Bin/undo semantics.
+- [x] Never fall back to permanent deletion.
+- [x] Write an append-preserving JSONL audit and present per-item results.
 - [ ] Add safety tests for traversal, reparse, casing, races, extra content, Shell abort/failure, and audit ID validation.
 
 Exit: only unchanged, contained Added items can be moved to the Recycle Bin, with a durable audit trail.

@@ -2,10 +2,14 @@
 
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include "cleanup/CleanupExecutor.h"
 #include "cleanup/CleanupPreflight.h"
+#include "domain/DomainError.h"
 #include "paths/WindowsPaths.h"
 #include "scanner/MetadataScanner.h"
 
@@ -33,6 +37,15 @@ const foldersnap::CleanupPreflightItem *itemAt(const foldersnap::CleanupPrefligh
 {
     const auto iterator = std::find_if(result.items.cbegin(), result.items.cend(),
                                        [&path](const foldersnap::CleanupPreflightItem &item)
+                                       { return item.path == path; });
+    return iterator == result.items.cend() ? nullptr : &*iterator;
+}
+
+const foldersnap::CleanupExecutionItem *
+executionItemAt(const foldersnap::CleanupExecutionResult &result, const QString &path)
+{
+    const auto iterator = std::find_if(result.items.cbegin(), result.items.cend(),
+                                       [&path](const foldersnap::CleanupExecutionItem &item)
                                        { return item.path == path; });
     return iterator == result.items.cend() ? nullptr : &*iterator;
 }
@@ -185,6 +198,119 @@ class CleanupTest final : public QObject
         const auto result = foldersnap::CleanupPreflight::inspect({}, {}, {}, [] { return true; });
         QVERIFY(result.cancelled);
         QVERIFY(result.items.isEmpty());
+    }
+
+    void executionRevalidatesAndMovesDeepestFirst()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(temporaryDirectory.isValid());
+        QVERIFY(QDir().mkpath(temporaryDirectory.filePath("folder")));
+        writeFile(temporaryDirectory.filePath("folder/known.txt"), "known");
+
+        const foldersnap::RootPath root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        const foldersnap::ScanResult scanResult = scan(root);
+        QVERIFY2(scanResult.error.isEmpty(), qPrintable(scanResult.error));
+
+        foldersnap::CleanupExecutionRequest request;
+        request.paths = foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        request.root = root;
+        request.rootId = foldersnap::createId();
+        request.beforeId = foldersnap::createId();
+        request.afterId = foldersnap::createId();
+        request.candidates = candidatesFor(scanResult.snapshot, {"folder", "folder/known.txt"});
+        request.selectedPaths = {"folder"};
+
+        QStringList moved;
+        const auto result = foldersnap::CleanupExecutor::execute(
+            request,
+            [&moved](const QString &path)
+            {
+                moved.append(QDir::fromNativeSeparators(path));
+                return foldersnap::CleanupMoveResult{true, false, false, {}};
+            });
+
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(result.preflight.summary.readyCount, 2);
+        QCOMPARE(result.summary.movedCount, 2);
+        QCOMPARE(result.summary.blockedCount, 0);
+        QCOMPARE(result.summary.failedCount, 0);
+        QCOMPARE(moved.size(), 2);
+        QCOMPARE(QDir(root.displayPath).relativeFilePath(moved.at(0)), QString("folder/known.txt"));
+        QCOMPARE(QDir(root.displayPath).relativeFilePath(moved.at(1)), QString("folder"));
+        QCOMPARE(executionItemAt(result, "folder")->status,
+                 foldersnap::CleanupStatus::MovedToRecycleBin);
+
+        const auto second = foldersnap::CleanupExecutor::execute(
+            request, [](const QString &) { return foldersnap::CleanupMoveResult{true}; });
+        QVERIFY2(second.error.isEmpty(), qPrintable(second.error));
+        QCOMPARE(second.summary.movedCount, 2);
+
+        QFile audit(foldersnap::CleanupExecutor::auditPath(request.paths, request.rootId));
+        QVERIFY(audit.open(QIODevice::ReadOnly));
+        const QByteArray firstLine = audit.readLine();
+        const QByteArray secondLine = audit.readLine();
+        QVERIFY(!firstLine.isEmpty());
+        QVERIFY(!secondLine.isEmpty());
+        QVERIFY(audit.atEnd());
+        const QJsonDocument document = QJsonDocument::fromJson(firstLine);
+        QVERIFY(document.isObject());
+        QCOMPARE(document.object().value("rootId").toString(), request.rootId);
+        QCOMPARE(document.object().value("beforeId").toString(), request.beforeId);
+        QCOMPARE(document.object().value("afterId").toString(), request.afterId);
+        QCOMPARE(document.object().value("movedCount").toInt(), 2);
+    }
+
+    void failedChildKeepsParentOutOfRecycleBin()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(temporaryDirectory.isValid());
+        QVERIFY(QDir().mkpath(temporaryDirectory.filePath("folder")));
+        writeFile(temporaryDirectory.filePath("folder/known.txt"), "known");
+
+        const foldersnap::RootPath root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        const foldersnap::ScanResult scanResult = scan(root);
+        QVERIFY2(scanResult.error.isEmpty(), qPrintable(scanResult.error));
+
+        foldersnap::CleanupExecutionRequest request;
+        request.paths = foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        request.root = root;
+        request.rootId = foldersnap::createId();
+        request.beforeId = foldersnap::createId();
+        request.afterId = foldersnap::createId();
+        request.candidates = candidatesFor(scanResult.snapshot, {"folder", "folder/known.txt"});
+        request.selectedPaths = {"folder"};
+
+        QStringList attempted;
+        const auto result = foldersnap::CleanupExecutor::execute(
+            request,
+            [&attempted](const QString &path)
+            {
+                attempted.append(QDir::fromNativeSeparators(path));
+                return foldersnap::CleanupMoveResult{false, false, true, "Shell aborted."};
+            });
+
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(attempted.size(), 1);
+        QCOMPARE(QDir(root.displayPath).relativeFilePath(attempted.first()),
+                 QString("folder/known.txt"));
+        QCOMPARE(executionItemAt(result, "folder/known.txt")->status,
+                 foldersnap::CleanupStatus::Failed);
+        QCOMPARE(executionItemAt(result, "folder")->status, foldersnap::CleanupStatus::Failed);
+        QCOMPARE(result.summary.movedCount, 0);
+        QVERIFY(result.summary.failedCount >= 2);
+    }
+
+    void auditRejectsUnsafeRootIds()
+    {
+        QTemporaryDir dataDirectory;
+        QVERIFY(dataDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        QVERIFY_EXCEPTION_THROWN(foldersnap::CleanupExecutor::auditPath(paths, "../escape"),
+                                 foldersnap::DomainError);
     }
 };
 

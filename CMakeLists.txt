@@ -39,6 +39,7 @@ add_library(folder_snap_core STATIC
     src/diff/DiffEngine.h src/diff/DiffEngine.cpp
     src/diff/ComparisonTree.h src/diff/ComparisonTree.cpp
     src/cleanup/CleanupPreflight.h src/cleanup/CleanupPreflight.cpp
+    src/cleanup/CleanupExecutor.h src/cleanup/CleanupExecutor.cpp
     src/export/ExportBuilder.h src/export/ExportBuilder.cpp
     src/application/ExportJob.h src/application/ExportJob.cpp
     src/storage/AtomicFile.h src/storage/AtomicFile.cpp
@@ -51,6 +52,9 @@ add_library(folder_snap_core STATIC
 )
 target_include_directories(folder_snap_core PUBLIC src)
 target_link_libraries(folder_snap_core PUBLIC Qt6::Core ZLIB::ZLIB)
+if(WIN32)
+    target_link_libraries(folder_snap_core PUBLIC ole32 shell32)
+endif()
 
 set(folder_snap_qml_files
     src/qml/Main.qml

@@ -20,6 +20,7 @@ enum class CleanupStatus
     OutsideRootOrInvalid,
     AccessDeniedOrUnreadable,
     ContainsUntrackedContent,
+    MovedToRecycleBin,
     Failed
 };
 
