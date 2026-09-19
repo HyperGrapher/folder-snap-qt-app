@@ -90,6 +90,7 @@ class ExportTest final : public QObject
         QCOMPARE(dto.value("reportType").toString(), QString("snapshot"));
         const QJsonObject header = dto.value("header").toObject();
         QCOMPARE(header.value("rootTitle").toString(), snapshot.header.displayTitle);
+        QCOMPARE(header.value("rootPath").toString(), snapshot.header.rootPathAtCapture);
         QCOMPARE(header.value("totalFileBytes").toString(), QString("9007199254740993"));
         const QJsonArray entries = dto.value("entries").toArray();
         QCOMPARE(entries.size(), snapshot.entries.size());
@@ -133,6 +134,9 @@ class ExportTest final : public QObject
         QVERIFY(!html.contains(".innerHTML"));
         QVERIFY(html.contains("createDocumentFragment"));
         QVERIFY(html.contains("textContent"));
+        QVERIFY(html.contains(
+            "grid-template-columns:minmax(220px,1fr) 95px minmax(145px,auto) 155px auto"));
+        QVERIFY(html.contains("summary::before { content:\"›\"; position:absolute;"));
 
         const QByteArray opening = "<script id=\"foldersnap-data\" type=\"application/json\">";
         const qsizetype jsonStart = html.indexOf(opening) + opening.size();
@@ -173,6 +177,8 @@ class ExportTest final : public QObject
 
         const QJsonObject dto = foldersnap::ExportBuilder::comparisonDto(before, after, diff);
         QCOMPARE(dto.value("reportType").toString(), QString("comparison"));
+        QCOMPARE(dto.value("header").toObject().value("rootPath").toString(),
+                 after.header.rootPathAtCapture);
         const QJsonObject entry = dto.value("entries").toArray().first().toObject();
         QCOMPARE(entry.value("change").toString(), QString("modified"));
         QCOMPARE(entry.value("before").toObject().value("sizeBytes").toString(),

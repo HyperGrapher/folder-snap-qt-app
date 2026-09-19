@@ -227,6 +227,7 @@ QJsonObject ExportBuilder::comparisonDto(const Snapshot &before, const Snapshot 
     const QJsonObject header{
         {"rootId", before.header.rootId},
         {"rootTitle", after.header.displayTitle},
+        {"rootPath", after.header.rootPathAtCapture},
         {"beforeId", before.header.snapshotId},
         {"afterId", after.header.snapshotId},
         {"beforeCompletedAtUtc", formatTimestamp(before.header.completedAtUtc)},

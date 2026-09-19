@@ -10,41 +10,50 @@
     * { box-sizing: border-box; }
     body { margin:0; min-width:320px; background:radial-gradient(circle at 15% 0,#17312e 0,transparent 35%),#0d1519; }
     header, main { width:min(1180px,calc(100% - 32px)); margin:auto; }
-    header { padding:38px 0 22px; }
-    h1 { margin:6px 0; font-size:clamp(24px,4vw,40px); letter-spacing:-.04em; }
+    header { padding:30px 0 18px; }
+    h1 { margin:5px 0; font-size:clamp(24px,4vw,38px); letter-spacing:-.04em; }
     .eyebrow { color:#94e6c6; font-size:11px; letter-spacing:.16em; text-transform:uppercase; }
     .summary { color:#aebfba; display:flex; flex-wrap:wrap; gap:8px 18px; font-size:13px; }
-    .toolbar { position:sticky; top:0; z-index:4; display:grid; grid-template-columns:minmax(180px,1fr) repeat(3,auto); gap:10px; padding:13px; border:1px solid #314146; border-radius:13px; background:#142126ee; backdrop-filter:blur(14px); }
-    input, select { min-height:38px; border:1px solid #3b4d51; border-radius:8px; padding:0 11px; background:#0f1a1e; color:#e8f1ed; font:inherit; }
+    .toolbar { position:sticky; top:0; z-index:4; display:grid; grid-template-columns:minmax(180px,1fr) repeat(3,auto); gap:8px; padding:10px; border:1px solid #314146; border-radius:11px; background:#142126ee; backdrop-filter:blur(14px); }
+    input, select { min-height:34px; border:1px solid #3b4d51; border-radius:7px; padding:0 10px; background:#0f1a1e; color:#e8f1ed; font:inherit; }
     input:focus, select:focus { outline:2px solid #94e6c6; outline-offset:1px; }
-    #tree { margin:15px 0 32px; border:1px solid #2d3d42; border-radius:13px; overflow:hidden; background:#111c21; }
+    #tree { margin:12px 0 26px; border:1px solid #2d3d42; border-radius:11px; overflow:hidden; background:#111c21; }
     details { border-top:1px solid #26363b; }
     details:first-child { border-top:0; }
-    summary { cursor:pointer; list-style:none; }
+    summary { position:relative; cursor:pointer; list-style:none; }
     summary::-webkit-details-marker { display:none; }
-    summary::before { content:"›"; display:inline-block; width:20px; color:#94e6c6; transform:rotate(0); transition:transform .12s; }
-    details[open] > summary::before { transform:rotate(90deg); }
-    .row { min-height:44px; display:grid; grid-template-columns:minmax(220px,1fr) 130px minmax(180px,auto) 170px; align-items:center; gap:12px; padding:8px 14px; border-top:1px solid #26363b; }
-    summary.row { display:grid; }
+    summary::before { content:"›"; position:absolute; left:12px; top:50%; width:12px; color:#94e6c6; font-size:17px; line-height:1; transform:translateY(-50%) rotate(0); transition:transform .12s; }
+    details[open] > summary::before { transform:translateY(-50%) rotate(90deg); }
+    .row { min-height:40px; display:grid; grid-template-columns:minmax(220px,1fr) 95px minmax(145px,auto) 155px auto; align-items:center; gap:10px; padding:6px 12px; border-top:1px solid #26363b; }
+    summary.row { padding-left:36px; }
     .row:hover { background:#1a292d; }
-    .name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .path { display:block; color:#879b96; font-size:10px; overflow:hidden; text-overflow:ellipsis; }
-    .meta { color:#afc0bb; font-size:12px; }
-    .badge { justify-self:start; border:1px solid #526267; border-radius:999px; padding:3px 8px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
+    .name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; line-height:1.15; }
+    .path { display:block; margin-top:2px; color:#879b96; font-size:9px; font-weight:400; overflow:hidden; text-overflow:ellipsis; }
+    .meta { color:#afc0bb; font-size:11px; white-space:nowrap; }
+    .row .name { grid-column:1; }
+    .row .type { grid-column:2; }
+    .row .size { grid-column:3; }
+    .row .date { grid-column:4; }
+    .row .badge { grid-column:5; }
+    .badge { justify-self:start; border:1px solid #526267; border-radius:999px; padding:2px 7px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
     .status-added { background:#173c31; border-left:4px solid #73d7ad; }
     .status-removed { background:#3a2025; border-left:4px solid #ef8992; }
     .status-modified { background:#3a3420; border-left:4px solid #e8c56f; }
     .status-warning { background:#332b3d; border-left:4px solid #c0a2ef; }
-    .children { margin-left:20px; border-left:1px solid #324348; }
-    .empty { padding:42px 18px; text-align:center; color:#8ea19c; }
-    #warnings { margin:0 0 36px; }
-    .warning { padding:10px 13px; margin-top:8px; border:1px solid #6a5930; border-radius:8px; background:#332d1d; color:#ead08a; }
-    footer { padding:0 0 30px; color:#71847f; font-size:11px; }
+    .children { margin-left:16px; border-left:1px solid #324348; }
+    .empty { padding:34px 18px; text-align:center; color:#8ea19c; }
+    #warnings { margin:0 0 28px; }
+    .warning { padding:8px 11px; margin-top:7px; border:1px solid #6a5930; border-radius:7px; background:#332d1d; color:#ead08a; font-size:12px; }
+    footer { padding:0 0 26px; color:#71847f; font-size:10px; }
     @media (max-width:800px) {
       .toolbar { grid-template-columns:1fr 1fr; }
       .toolbar input { grid-column:1/-1; }
-      .row { grid-template-columns:minmax(150px,1fr) auto; }
-      .row .date, .row .type { display:none; }
+      .row { grid-template-columns:minmax(150px,1fr) auto; gap:7px; padding:6px 10px; }
+      .row .type, .row .date { display:none; }
+      .row .name { grid-column:1; grid-row:1; }
+      .row .size { grid-column:2; grid-row:1; }
+      .row .badge { grid-column:2; grid-row:2; }
+      summary.row { padding-left:32px; }
     }
   </style>
 </head>
@@ -118,9 +127,9 @@
       } catch (_) { return String(value) + " B"; }
     }
     function formatDate(value) {
-      if (!value) return "Unknown";
+      if (!value) return "—";
       const date = new Date(value);
-      return Number.isNaN(date.valueOf()) ? "Unknown" : date.toLocaleString();
+      return Number.isNaN(date.valueOf()) ? "—" : date.toLocaleString();
     }
     function createTree(entries) {
       const root = {path:"", name:"", children:new Map(), data:null, depth:-1};
@@ -138,12 +147,14 @@
     }
     function metadata(node) {
       if (!node.data) return {};
-      return isComparison ? (node.data.after || node.data.before || {}) : node.data;
+      if (!isComparison) return node.data;
+      const after = node.data.after;
+      return after && Object.keys(after).length ? after : (node.data.before || {});
     }
     function isFolder(node) { return metadata(node).type === "directory" || node.children.size > 0; }
     function displayName(node) {
       const display = metadata(node).displayPath || node.data?.displayPath || node.path;
-      return String(display).split("/").pop() || node.name;
+      return String(display).split(/[\\/]/).pop() || node.name;
     }
     function nodeStatus(node) { return isComparison && node.data ? node.data.change || "" : ""; }
     function sizeValue(node) {
@@ -197,10 +208,11 @@
       if (isComparison) {
         const before = node.data?.before?.sizeBytes, after = node.data?.after?.sizeBytes;
         const size = before != null || after != null ? formatBytes(before) + " → " + formatBytes(after) : formatBytes(sizeValue(node));
-        text(container, size, "meta");
-      } else text(container, formatBytes(sizeValue(node)), "meta");
-      const date = text(container, formatDate(createdValue(node)), "meta date");
-      if (createdValue(node)) date.dataset.utc = createdValue(node);
+        text(container, size, "meta size");
+      } else text(container, formatBytes(sizeValue(node)), "meta size");
+      const created = createdValue(node);
+      const date = text(container, formatDate(created), "meta date");
+      if (created) date.dataset.utc = created;
       if (status) text(container, statusLabel(status), "badge");
     }
     function renderNode(node, visible, query) {
@@ -230,7 +242,13 @@
     let debounce;
     controls.search.addEventListener("input", () => { clearTimeout(debounce); debounce=setTimeout(render,160); });
     controls.filter.addEventListener("change", render); controls.sort.addEventListener("change", render); controls.direction.addEventListener("change", render);
-    titleElement.textContent = report.header?.rootTitle || "FolderSnap report";
+    function reportTitle() {
+      const title = String(report.header?.rootTitle || "").trim();
+      if (title && title.toLocaleLowerCase() !== "unknown") return title;
+      const rootPath = String(report.header?.rootPath || "").replace(/[\\/]+$/, "");
+      return rootPath.split(/[\\/]/).pop() || "FolderSnap report";
+    }
+    titleElement.textContent = reportTitle();
     document.title = titleElement.textContent + " · FolderSnap";
     for (const warning of report.warnings || []) {
       const row=document.createElement("div"); row.className="warning"; row.textContent=(warning.path || "Root") + " · " + (warning.message || "Scan warning"); warningElement.appendChild(row);
