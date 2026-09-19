@@ -241,7 +241,8 @@ Exit: lifecycle, activation, tray, startup, Explorer, logging, and branding work
 - [ ] Verify every destructive action has specific confirmation and no permanent-delete fallback exists.
 - [ ] Run `clang-format` and `qmlformat`, then inspect the final diff for obsolete template code and branding.
 - [ ] Update README build, test, deployment, data location, privacy, and operational instructions.
-- [ ] Produce a deployable folder with `windeployqt` and all required runtime assets.
+- [x] Produce a deployable folder with `windeployqt` and all required runtime assets.
+- [x] Provide a repeatable Inno Setup installer build for the standalone Windows package.
 - [ ] Perform clean-machine Windows 10/11 smoke tests and record any platform limitations.
 
 Exit: the complete product meets the guide's definition of done and is ready for normal use.

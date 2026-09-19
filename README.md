@@ -59,20 +59,24 @@ Only `build/` is used for build products. A missing Vulkan-headers notice is not
 an error: Windows uses Qt's Direct3D 11 backend by default. Shader Tools compiles
 the fragment shader to the embedded `.qsb` resource during the build.
 
-## Deploy a standalone folder
+## Build a standalone installer
 
-Run after the build, in the same PowerShell environment:
+The packaging script builds the Release target, runs `windeployqt`, includes the
+MinGW runtime and the vcpkg zlib DLL, and compiles an Inno Setup installer. The
+installed application does not require Qt, MinGW, or vcpkg on the destination
+computer. It targets 64-bit Windows.
 
 ```powershell
-New-Item -ItemType Directory -Force build/deploy | Out-Null
-Copy-Item build/FolderSnap.exe build/deploy/FolderSnap.exe
-& "$qtRoot/bin/windeployqt.exe" --release --compiler-runtime --no-translations `
-    --qmldir src/qml --dir build/deploy build/deploy/FolderSnap.exe
-& .\build\deploy\FolderSnap.exe
+.\scripts\BuildInstaller.ps1
 ```
 
-Keep the entire deployment folder together; the EXE alone is insufficient.
-Deployment includes Qt's runtime libraries and QML plugins. No installer is provided.
+The installer is written to `build/installer/FolderSnap-Setup-0.1.0.exe` and the
+expanded deployment folder is kept at `build/deploy/` for smoke testing. Override
+local tool locations with `-QtRoot`, `-CompilerRoot`, `-VcpkgRoot`, and
+`-InnoSetupRoot`; CI can provide the same values through the corresponding
+`FOLDERSNAP_QT_ROOT`, `FOLDERSNAP_COMPILER_ROOT`, `VCPKG_ROOT`, and
+`FOLDERSNAP_INNO_ROOT` environment variables. Pass `-Version 1.2.3` for a release
+version and `-SkipBuild` when packaging an already-built executable.
 
 ## What to try
 
