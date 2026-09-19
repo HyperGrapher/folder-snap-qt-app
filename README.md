@@ -73,10 +73,13 @@ computer. It targets 64-bit Windows.
 The installer is written to `build/installer/FolderSnap-Setup-0.1.0.exe` and the
 expanded deployment folder is kept at `build/deploy/` for smoke testing. Override
 local tool locations with `-QtRoot`, `-CompilerRoot`, `-VcpkgRoot`, and
-`-InnoSetupRoot`; CI can provide the same values through the corresponding
-`FOLDERSNAP_QT_ROOT`, `FOLDERSNAP_COMPILER_ROOT`, `VCPKG_ROOT`, and
-`FOLDERSNAP_INNO_ROOT` environment variables. Pass `-Version 1.2.3` for a release
-version and `-SkipBuild` when packaging an already-built executable.
+`-InnoSetupRoot`; when omitted, Qt's `windeployqt`, MinGW `g++`, and `vcpkg` are
+resolved from `PATH`, while Inno Setup uses the current user's standard local
+installation directory. The build directory defaults to `build/`. CI can provide
+the same values through the corresponding `FOLDERSNAP_QT_ROOT`,
+`FOLDERSNAP_COMPILER_ROOT`, `VCPKG_ROOT`, and `FOLDERSNAP_INNO_ROOT` environment
+variables. Pass `-Version 1.2.3` for a release version and `-SkipBuild` when
+packaging an already-built executable.
 
 ## What to try
 

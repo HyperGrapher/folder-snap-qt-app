@@ -30,7 +30,7 @@ function Resolve-Setting {
     param(
         [string]$ParameterValue,
         [string]$EnvironmentName,
-        [Parameter(Mandatory)][string]$Fallback
+        [string]$Fallback
     )
 
     if (-not [string]::IsNullOrWhiteSpace($ParameterValue)) {
@@ -43,6 +43,22 @@ function Resolve-Setting {
     }
 
     return $Fallback
+}
+
+function Find-CommandPath {
+    param([Parameter(Mandatory)][string]$Name)
+
+    $command = Get-Command $Name -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandType -eq 'Application' } |
+        Select-Object -First 1
+    if ($null -eq $command) {
+        return $null
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($command.Path)) {
+        return $command.Path
+    }
+    return $command.Source
 }
 
 function Invoke-LoggedCommand {
@@ -95,23 +111,91 @@ $buildDirectoryValue = if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
 }
 $buildDirectory = Resolve-AbsolutePath $buildDirectoryValue
 
-$qtRoot = Resolve-AbsolutePath (Resolve-Setting $QtRoot 'FOLDERSNAP_QT_ROOT' 'C:\Qt\6.11.1\mingw_64')
-$compilerRoot = Resolve-AbsolutePath (Resolve-Setting $CompilerRoot 'FOLDERSNAP_COMPILER_ROOT' 'C:\Qt\Tools\mingw1310_64')
-$vcpkgRoot = Resolve-AbsolutePath (Resolve-Setting $VcpkgRoot 'VCPKG_ROOT' 'C:\Users\burak\vcpkg')
-$innoSetupRoot = Resolve-AbsolutePath (Resolve-Setting $InnoSetupRoot 'FOLDERSNAP_INNO_ROOT' 'C:\Users\burak\AppData\Local\Programs\Inno Setup 6')
+$missingRequirements = @()
 
-$cmakeCommand = Get-Command cmake.exe -ErrorAction Stop
-$cmakePath = $cmakeCommand.Source
-$vcpkgPath = Join-Path $vcpkgRoot 'vcpkg.exe'
-$windeployqtPath = Join-Path $qtRoot 'bin\windeployqt.exe'
-$isccPath = Join-Path $innoSetupRoot 'ISCC.exe'
-$compilerPath = Join-Path $compilerRoot 'bin\g++.exe'
-$toolchainPath = Join-Path $vcpkgRoot 'scripts\buildsystems\vcpkg.cmake'
+$cmakePath = Find-CommandPath 'cmake.exe'
+if ($null -eq $cmakePath) {
+    $missingRequirements += 'cmake.exe (not supplied and not found on PATH)'
+}
 
-foreach ($requiredPath in @($vcpkgPath, $windeployqtPath, $isccPath, $compilerPath, $toolchainPath)) {
-    if (-not (Test-Path $requiredPath)) {
-        throw "Required tool or file was not found: $requiredPath"
+$qtSetting = Resolve-Setting $QtRoot 'FOLDERSNAP_QT_ROOT' ''
+if ([string]::IsNullOrWhiteSpace($qtSetting)) {
+    $windeployqtPath = Find-CommandPath 'windeployqt.exe'
+    if ($null -eq $windeployqtPath) {
+        $missingRequirements += 'windeployqt.exe (QtRoot not supplied and not found on PATH)'
+        $qtRoot = $null
+    } else {
+        $qtRoot = Split-Path -Parent (Split-Path -Parent $windeployqtPath)
     }
+} else {
+    $qtRoot = Resolve-AbsolutePath $qtSetting
+    $windeployqtPath = Join-Path $qtRoot 'bin\windeployqt.exe'
+    if (-not (Test-Path $windeployqtPath)) {
+        $missingRequirements += "windeployqt.exe (not found under QtRoot: $qtRoot)"
+    }
+}
+
+$compilerSetting = Resolve-Setting $CompilerRoot 'FOLDERSNAP_COMPILER_ROOT' ''
+if ([string]::IsNullOrWhiteSpace($compilerSetting)) {
+    $compilerPath = Find-CommandPath 'g++.exe'
+    if ($null -eq $compilerPath) {
+        $missingRequirements += 'g++.exe (CompilerRoot not supplied and not found on PATH)'
+        $compilerRoot = $null
+    } else {
+        $compilerRoot = Split-Path -Parent (Split-Path -Parent $compilerPath)
+    }
+} else {
+    $compilerRoot = Resolve-AbsolutePath $compilerSetting
+    $compilerPath = Join-Path $compilerRoot 'bin\g++.exe'
+    if (-not (Test-Path $compilerPath)) {
+        $missingRequirements += "g++.exe (not found under CompilerRoot: $compilerRoot)"
+    }
+}
+
+$vcpkgSetting = Resolve-Setting $VcpkgRoot 'VCPKG_ROOT' ''
+if ([string]::IsNullOrWhiteSpace($vcpkgSetting)) {
+    $vcpkgPath = Find-CommandPath 'vcpkg.exe'
+    if ($null -eq $vcpkgPath) {
+        $missingRequirements += 'vcpkg.exe (VcpkgRoot not supplied and not found on PATH)'
+        $vcpkgRoot = $null
+    } else {
+        $vcpkgRoot = Split-Path -Parent $vcpkgPath
+    }
+} else {
+    $vcpkgRoot = Resolve-AbsolutePath $vcpkgSetting
+    $vcpkgPath = Join-Path $vcpkgRoot 'vcpkg.exe'
+    if (-not (Test-Path $vcpkgPath)) {
+        $missingRequirements += "vcpkg.exe (not found under VcpkgRoot: $vcpkgRoot)"
+    }
+}
+
+$toolchainPath = if ($null -ne $vcpkgRoot) {
+    Join-Path $vcpkgRoot 'scripts\buildsystems\vcpkg.cmake'
+} else {
+    $null
+}
+if ($null -ne $toolchainPath -and -not (Test-Path $toolchainPath)) {
+    $missingRequirements += "vcpkg.cmake toolchain (not found under VcpkgRoot: $vcpkgRoot)"
+}
+
+$innoSetting = Resolve-Setting $InnoSetupRoot 'FOLDERSNAP_INNO_ROOT' ''
+if ([string]::IsNullOrWhiteSpace($innoSetting)) {
+    $localApplicationData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    $innoSetupRoot = Join-Path $localApplicationData 'Programs\Inno Setup 6'
+} else {
+    $innoSetupRoot = Resolve-AbsolutePath $innoSetting
+}
+$isccPath = Join-Path $innoSetupRoot 'ISCC.exe'
+if (-not (Test-Path $isccPath)) {
+    $missingRequirements += "ISCC.exe (not found at the Inno Setup path: $innoSetupRoot)"
+}
+
+if ($missingRequirements.Count -gt 0) {
+    Write-Host 'Missing required build tools or paths:' -ForegroundColor Red
+    foreach ($missingRequirement in $missingRequirements) {
+        Write-Host "  - $missingRequirement" -ForegroundColor Red
+    }
+    throw 'Install the missing tools or provide their root paths, then run the installer script again.'
 }
 
 New-Item -ItemType Directory -Force -Path $buildDirectory | Out-Null
