@@ -104,6 +104,8 @@ class ExportTest final : public QObject
     {
         foldersnap::Snapshot snapshot = fixtureSnapshot();
         snapshot.entries[1].linkTarget = "target,\"quoted\"\nline";
+        snapshot.entries[1].path = "=sum(1,1)";
+        snapshot.entries[1].displayPath = snapshot.entries[1].path;
 
         const QByteArray csv = foldersnap::ExportBuilder::snapshotCsv(snapshot);
 
@@ -112,6 +114,7 @@ class ExportTest final : public QObject
             csv.contains("path,displayPath,type,sizeBytes,createdAtUtc,modifiedAtUtc,attributes,"
                          "linkTarget\r\n"));
         QVERIFY(csv.contains("\"target,\"\"quoted\"\"\nline\""));
+        QVERIFY(csv.contains("\"'=sum(1,1)\""));
         QVERIFY(csv.contains("9007199254740993"));
         QVERIFY(csv.endsWith("\r\n"));
     }
@@ -185,6 +188,20 @@ class ExportTest final : public QObject
                  QString("9007199254740993"));
         QCOMPARE(entry.value("after").toObject().value("sizeBytes").toString(),
                  QString("9007199254741000"));
+        const QJsonObject folderSizes = dto.value("folderSizes").toObject();
+        const QJsonObject dataFolder = folderSizes.value(QString::fromUtf8("資料")).toObject();
+        QCOMPARE(dataFolder.value("beforeBytes").toString(), QString("9007199254740993"));
+        QCOMPARE(dataFolder.value("afterBytes").toString(), QString("9007199254741000"));
+
+        const QByteArray html = foldersnap::ExportBuilder::htmlReport(dto, exportTemplate());
+        const QByteArray opening = "<script id=\"foldersnap-data\" type=\"application/json\">";
+        const qsizetype jsonStart = html.indexOf(opening) + opening.size();
+        const qsizetype jsonEnd = html.indexOf("</script>", jsonStart);
+        QVERIFY(jsonStart >= opening.size());
+        QVERIFY(jsonEnd > jsonStart);
+        const QJsonDocument embedded =
+            QJsonDocument::fromJson(html.mid(jsonStart, jsonEnd - jsonStart));
+        QCOMPARE(embedded.object().value("folderSizes"), dto.value("folderSizes"));
 
         const QByteArray csv = foldersnap::ExportBuilder::comparisonCsv(before, after, diff);
         QCOMPARE(csv.left(3), QByteArray::fromHex("efbbbf"));

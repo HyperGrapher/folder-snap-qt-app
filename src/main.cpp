@@ -55,6 +55,7 @@ int main(int argc, char *argv[])
     WindowsWindowController windowController(*window);
     WindowsTrayController trayController(*appState, windowController);
     WindowsNotificationController notificationController(*appState);
+    const bool backgroundStartup = QCoreApplication::arguments().contains("--background");
     const auto updateCloseToTray = [&app, &windowController, &trayController, appState]()
     {
         const bool trayAvailable = trayController.isAvailable();
@@ -66,7 +67,10 @@ int main(int argc, char *argv[])
     window->setProperty("windowController", QVariant::fromValue(&windowController));
     QObject::connect(&singleInstance, &SingleInstance::activationRequested, &windowController,
                      &WindowsWindowController::activate);
-    window->show();
+    if (!backgroundStartup || !trayController.isAvailable())
+    {
+        window->show();
+    }
     if (singleInstance.takePendingActivation())
     {
         windowController.activate();

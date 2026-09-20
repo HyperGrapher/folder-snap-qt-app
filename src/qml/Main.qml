@@ -5,7 +5,7 @@ import FolderSnap
 
 Window {
     id: window
-    property alias appState: preview
+    property alias appState: state
     property var windowController: null
     width: Math.min(1280, Screen.desktopAvailableWidth)
     height: Math.min(840, Screen.desktopAvailableHeight)
@@ -15,21 +15,21 @@ Window {
     title: "FolderSnap"
     color: Theme.background
     flags: Qt.Window | Qt.FramelessWindowHint
-    UiPreviewState {
-        id: preview
+    AppState {
+        id: state
     }
     MotionPolicy {
         id: motion
         windowVisible: window.visible
         windowExposed: window.windowController ? window.windowController.exposed : false
         windowMinimized: window.visibility === Window.Minimized
-        reducedMotion: preview.reducedMotion
-        backgroundMotionEnabled: preview.backgroundMotionEnabled
+        reducedMotion: state.reducedMotion
+        backgroundMotionEnabled: state.backgroundMotionEnabled
     }
     AmbientBackground {
         anchors.fill: parent
         motion: motion
-        section: preview.selectedSection
+        section: state.selectedSection
         opacity: 0.55
     }
     Rectangle {
@@ -50,7 +50,7 @@ Window {
         anchors.top: titleBar.bottom
         anchors.bottom: parent.bottom
         width: Theme.sidebarWidth
-        appState: preview
+        appState: state
         motion: motion
     }
     PageHost {
@@ -62,7 +62,7 @@ Window {
         anchors.bottom: footer.top
         anchors.topMargin: 27
         anchors.bottomMargin: 16
-        appState: preview
+        appState: state
         motion: motion
     }
     Rectangle {
@@ -82,23 +82,23 @@ Window {
             anchors.leftMargin: 28
             anchors.rightMargin: 28
             Glyph {
-                name: preview.scanning ? "snapshot" : "shield"
+                name: state.scanning ? "snapshot" : "shield"
                 font.pixelSize: 11
                 color: Theme.accent
             }
             LabelText {
-                text: preview.scanning ? "Scanning folder… " + preview.scanProgress + "%" : "Local by design"
+                text: state.scanning ? "Scanning folder… " + state.scanProgress + "%" : "Local by design"
                 font.pixelSize: 10
                 color: Theme.secondary
             }
             ActionButton {
-                visible: preview.scanning
+                visible: state.scanning
                 text: "Cancel"
                 primary: false
                 quiet: true
                 implicitHeight: 24
                 onClicked: {
-                    preview.cancelScan();
+                    state.cancelScan();
                 }
             }
             Item {
@@ -114,7 +114,7 @@ Window {
     PreviewDialog {
         id: previewDialog
         objectName: "previewDialog"
-        appState: preview
+        appState: state
         motion: motion
         parent: Overlay.overlay
     }
@@ -127,23 +127,23 @@ Window {
         radius: 10
         color: "#30443d"
         border.color: "#587667"
-        visible: preview.toast !== ""
+        visible: state.toast !== ""
         z: 100
         LabelText {
             id: toastText
             anchors.fill: parent
             anchors.margins: 16
-            text: preview.toast
+            text: state.toast
             font.pixelSize: 12
         }
         TapHandler {
-            onTapped: preview.toast = ""
+            onTapped: state.toast = ""
         }
     }
     Timer {
         interval: 5000
-        running: preview.toast !== ""
-        onTriggered: preview.toast = ""
+        running: state.toast !== ""
+        onTriggered: state.toast = ""
     }
     Binding {
         target: window.windowController

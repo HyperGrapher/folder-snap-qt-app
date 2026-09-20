@@ -16,9 +16,11 @@ Configuration and the lightweight history index now save atomically in the user'
 local application-data folder. Invalid saved JSON is preserved in a `corrupt/`
 subfolder before FolderSnap returns safe defaults. Snapshot payloads are gzip
 compressed; history commits are serialized, descriptions update only the index, and
-retention is isolated per watched root. The current live milestone scans folders on
-a worker thread and connects folder, snapshot, history, and comparison state to the
-interface. Scheduling, exports, cleanup, and Windows lifecycle integration remain planned.
+retention is isolated per watched root. The application scans folders on a worker
+thread and connects folder, snapshot, history, comparison, scheduling, exports,
+cleanup, notifications, and Windows lifecycle state to the interface. Remaining work
+is release hardening, large-tree performance, and a small set of unfinished
+settings/logging workflows.
 
 Run only the new core tests after building:
 
@@ -75,7 +77,7 @@ expanded deployment folder is kept at `build/deploy/` for smoke testing. Overrid
 local tool locations with `-QtRoot`, `-CompilerRoot`, `-VcpkgRoot`, and
 `-InnoSetupRoot`; when omitted, Qt's `windeployqt`, MinGW `g++`, and `vcpkg` are
 resolved from `PATH`, while Inno Setup uses the current user's standard local
-installation directory. The build directory defaults to `build/`. CI can provide
+installation directory. The script always uses the repository's `build/` directory. CI can provide
 the same values through the corresponding `FOLDERSNAP_QT_ROOT`,
 `FOLDERSNAP_COMPILER_ROOT`, `VCPKG_ROOT`, and `FOLDERSNAP_INNO_ROOT` environment
 variables. The script prints each packaging step while redirecting command output
@@ -102,13 +104,12 @@ already-built executable.
 - `src/qml/navigation/`: stable sidebar and retained-page transition host.
 - `src/qml/effects/AmbientBackground.qml` and `resources/shaders/ambient.frag`:
   palette interpolation and the four-blob fragment shader.
-- `src/qml/preview/UiPreviewState.qml`: QML-facing live `AppState` type retained for
-  the page contracts.
-- `src/AppState.*`: persisted configuration/history models and worker orchestration.
+- `src/AppState.*`: QML-facing live state, persisted configuration/history models, and
+  worker orchestration.
 - `src/WindowsWindowController.*`: native frame, hit testing, work-area sizing,
   corner clipping, and window exposure. Keep Win32 APIs out of QML.
 
-`Main.qml` owns a live `UiPreviewState`/`AppState` instance. Child components receive it explicitly.
+`Main.qml` owns a live `AppState` instance. Child components receive it explicitly.
 `MotionPolicy` combines user preferences with window visibility and exposure. Four
 page instances are created once. During transitions all page input is disabled;
 only the final selected page becomes enabled. Hidden pages retain their state

@@ -17,6 +17,7 @@
 #endif
 
 #include "domain/DomainError.h"
+#include "platform/windows/NativeFileMetadata.h"
 
 namespace foldersnap
 {
@@ -98,8 +99,9 @@ ProbeState probeStateFromWindowsError(DWORD error)
 LiveEntry probePath(const QString &path)
 {
     LiveEntry result;
+    std::optional<NativeFileMetadata> metadata;
 #ifdef Q_OS_WIN
-    const QString nativePath = QDir::toNativeSeparators(path);
+    const QString nativePath = extendedNativePath(path);
     const DWORD attributes = GetFileAttributesW(reinterpret_cast<LPCWSTR>(nativePath.utf16()));
     if (attributes == INVALID_FILE_ATTRIBUTES)
     {
@@ -107,10 +109,17 @@ LiveEntry probePath(const QString &path)
         return result;
     }
 
-    result.attributes = static_cast<quint32>(attributes);
-    result.type = (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ? EntryType::Reparse
-                  : (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0   ? EntryType::Directory
-                                                                   : EntryType::File;
+    metadata = readNativeFileMetadata(path);
+    if (!metadata)
+    {
+        result.state = probeStateFromWindowsError(GetLastError());
+        return result;
+    }
+
+    result.attributes = metadata->attributes;
+    result.type = (metadata->attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ? EntryType::Reparse
+                  : (metadata->attributes & FILE_ATTRIBUTE_DIRECTORY) != 0   ? EntryType::Directory
+                                                                             : EntryType::File;
 #else
     const QFileInfo info(path);
     if (!info.exists() && !info.isSymLink())
@@ -149,8 +158,16 @@ LiveEntry probePath(const QString &path)
             return result;
         }
     }
-    result.modifiedNs = timestampNanoseconds(info.lastModified());
-    result.createdNs = timestampNanoseconds(info.birthTime());
+    if (metadata)
+    {
+        result.modifiedNs = metadata->modifiedNs;
+        result.createdNs = metadata->createdNs;
+    }
+    else
+    {
+        result.modifiedNs = timestampNanoseconds(info.lastModified());
+        result.createdNs = timestampNanoseconds(info.birthTime());
+    }
     if (result.type == EntryType::Reparse)
     {
         result.linkTarget = info.symLinkTarget();
@@ -198,9 +215,8 @@ CleanupPreflightItem itemFor(const QString &path, CleanupStatus status, const QS
 }
 
 std::optional<CleanupPreflightItem>
-checkAncestors(const RootPath &root, const QString &relativePath, const QString &absolutePath)
+checkAncestors(const RootPath &root, const QString &relativePath, bool rootHasReparsePoint)
 {
-    Q_UNUSED(absolutePath);
     QString current = root.displayPath;
     const LiveEntry rootEntry = probePath(current);
     if (rootEntry.state == ProbeState::Missing)
@@ -227,6 +243,11 @@ checkAncestors(const RootPath &root, const QString &relativePath, const QString 
     {
         return itemFor(relativePath, CleanupStatus::TypeChanged,
                        "The watched root is no longer a directory.");
+    }
+    if (rootHasReparsePoint)
+    {
+        return itemFor(relativePath, CleanupStatus::OutsideRootOrInvalid,
+                       "The watched root or one of its parents is a reparse point.");
     }
 
     const QStringList components = relativePath.split('/');
@@ -352,6 +373,7 @@ DirectoryInspection inspectDirectoryContent(const RootPath &root, const QString 
 CleanupPreflightItem inspectCandidate(const RootPath &root, const CleanupCandidate &candidate,
                                       const QSet<QString> &selectedPaths,
                                       const CleanupPreflight::CancellationCallback &cancelled,
+                                      bool rootHasReparsePoint,
                                       QHash<QString, DirectoryInspection> &directoryCache)
 {
     checkCancelled(cancelled);
@@ -368,7 +390,7 @@ CleanupPreflightItem inspectCandidate(const RootPath &root, const CleanupCandida
         return itemFor(relativePath, CleanupStatus::OutsideRootOrInvalid, error.message());
     }
 
-    if (const auto ancestorFailure = checkAncestors(root, normalizedPath, absolutePath))
+    if (const auto ancestorFailure = checkAncestors(root, normalizedPath, rootHasReparsePoint))
     {
         return *ancestorFailure;
     }
@@ -521,7 +543,7 @@ CleanupPreflightResult CleanupPreflight::inspect(const RootPath &root,
             }
         }
 
-        QSet<QString> selectedCandidatePaths;
+        QSet<QString> selectedRoots;
         for (const QString &requestedPath : std::as_const(requestedPaths))
         {
             if (!candidatesByPath.contains(requestedPath))
@@ -530,17 +552,32 @@ CleanupPreflightResult CleanupPreflight::inspect(const RootPath &root,
                                                  "The selected path is not a cleanup candidate."));
                 continue;
             }
-            for (auto iterator = candidatesByPath.cbegin(); iterator != candidatesByPath.cend();
-                 ++iterator)
+            selectedRoots.insert(requestedPath);
+        }
+
+        QSet<QString> selectedCandidatePaths;
+        for (auto iterator = candidatesByPath.cbegin(); iterator != candidatesByPath.cend();
+             ++iterator)
+        {
+            QString ancestor = iterator.key();
+            while (true)
             {
-                if (iterator.key() == requestedPath || isAtOrBelow(iterator.key(), requestedPath))
+                if (selectedRoots.contains(ancestor))
                 {
                     selectedCandidatePaths.insert(iterator.key());
+                    break;
                 }
+                const qsizetype separator = ancestor.lastIndexOf('/');
+                if (separator < 0)
+                {
+                    break;
+                }
+                ancestor = ancestor.left(separator);
             }
         }
 
         QHash<QString, DirectoryInspection> directoryCache;
+        const bool rootHasReparsePoint = hasReparsePointInPath(root.displayPath);
         QHash<QString, int> resultIndex;
         for (const CleanupCandidate &candidate : candidates)
         {
@@ -560,7 +597,7 @@ CleanupPreflightResult CleanupPreflight::inspect(const RootPath &root,
             }
             resultIndex.insert(path, result.items.size());
             result.items.append(inspectCandidate(root, candidate, selectedCandidatePaths, cancelled,
-                                                 directoryCache));
+                                                 rootHasReparsePoint, directoryCache));
         }
         result.items.append(invalidSelections);
 

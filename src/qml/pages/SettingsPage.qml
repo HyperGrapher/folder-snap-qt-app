@@ -5,7 +5,7 @@ import FolderSnap
 
 ScrollView {
     id: page
-    required property UiPreviewState appState
+    required property AppState appState
     required property MotionPolicy motion
     contentWidth: availableWidth
     clip: true
@@ -191,15 +191,15 @@ ScrollView {
                         text: "Data folder"
                         primary: false
                         glyph: "folder"
-                        onClicked: page.appState.toast = page.appState.dataDirectory
+                        onClicked: page.appState.openDataFolder()
                     }
                     ActionButton {
                         animationsEnabled: page.motion.transitionsEnabled
-                        text: "View logs"
+                        text: "View logs (coming soon)"
                         primary: false
                         quiet: true
                         glyph: "file"
-                        onClicked: page.appState.toast = "FolderSnap records metadata locally; no log viewer is available yet."
+                        enabled: false
                     }
                     Item {
                         Layout.fillWidth: true

@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QScopeGuard>
 
 #include <zlib.h>
 
@@ -26,7 +27,10 @@ constexpr int kCompressionBufferBytes = 64 * 1024;
     throw DomainError(ErrorCode::InvalidData, message);
 }
 
-QByteArray gzipCompress(const QByteArray &input)
+void checkCancelled(const SnapshotStore::CancellationCallback &cancelled);
+
+QByteArray gzipCompress(const QByteArray &input,
+                        const SnapshotStore::CancellationCallback &cancelled)
 {
     if (input.size() > static_cast<qsizetype>(std::numeric_limits<uInt>::max()))
     {
@@ -38,6 +42,7 @@ QByteArray gzipCompress(const QByteArray &input)
     {
         compressionError("Could not initialize gzip compression.");
     }
+    const auto cleanup = qScopeGuard([&stream] { deflateEnd(&stream); });
 
     QByteArray output;
     output.reserve(input.size());
@@ -46,18 +51,17 @@ QByteArray gzipCompress(const QByteArray &input)
     int result = Z_OK;
     while (result != Z_STREAM_END)
     {
+        checkCancelled(cancelled);
         char buffer[kCompressionBufferBytes];
         stream.next_out = reinterpret_cast<Bytef *>(buffer);
         stream.avail_out = sizeof(buffer);
         result = deflate(&stream, Z_FINISH);
         if (result != Z_OK && result != Z_STREAM_END)
         {
-            deflateEnd(&stream);
             compressionError("Could not compress the snapshot payload.");
         }
         output.append(buffer, sizeof(buffer) - stream.avail_out);
     }
-    deflateEnd(&stream);
     return output;
 }
 
@@ -77,6 +81,7 @@ QByteArray gzipDecompress(const QByteArray &input, qsizetype maximumDecodedBytes
     {
         compressionError("Could not initialize gzip decompression.");
     }
+    const auto cleanup = qScopeGuard([&stream] { inflateEnd(&stream); });
 
     QByteArray output;
     stream.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(input.constData()));
@@ -94,7 +99,6 @@ QByteArray gzipDecompress(const QByteArray &input, qsizetype maximumDecodedBytes
         {
             if (output.size() > maximumDecodedBytes - produced)
             {
-                inflateEnd(&stream);
                 throw DomainError(ErrorCode::SizeLimit,
                                   "Decoded snapshot payload exceeds the allowed size.");
             }
@@ -102,17 +106,14 @@ QByteArray gzipDecompress(const QByteArray &input, qsizetype maximumDecodedBytes
         }
         if (result != Z_OK && result != Z_STREAM_END)
         {
-            inflateEnd(&stream);
             compressionError("Snapshot payload is not a valid gzip stream.");
         }
         if (result == Z_OK && stream.avail_in == 0 && produced == 0)
         {
-            inflateEnd(&stream);
             compressionError("Snapshot payload ended before the gzip stream completed.");
         }
     }
     const bool hasTrailingBytes = stream.avail_in != 0;
-    inflateEnd(&stream);
     if (hasTrailingBytes)
     {
         compressionError("Snapshot payload contains trailing gzip data.");
@@ -156,11 +157,18 @@ bool SnapshotStore::hasPayload(const QString &snapshotId) const
     return QFileInfo::exists(payloadPath(snapshotId));
 }
 
-qint64 SnapshotStore::saveSnapshot(const Snapshot &snapshot) const
+qint64 SnapshotStore::saveSnapshot(const Snapshot &snapshot,
+                                   const CancellationCallback &cancelled) const
 {
+    checkCancelled(cancelled);
     const QByteArray json = encodeSnapshot(snapshot);
-    const QByteArray compressed = gzipCompress(json);
-    replaceFileAtomically(payloadPath(snapshot.header.snapshotId), compressed);
+    checkCancelled(cancelled);
+    const QByteArray compressed = gzipCompress(json, cancelled);
+    checkCancelled(cancelled);
+    if (!replaceFileAtomically(payloadPath(snapshot.header.snapshotId), compressed, cancelled))
+    {
+        throw DomainError(ErrorCode::Cancelled, "Snapshot saving was cancelled.");
+    }
     return compressed.size();
 }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <QList>
 
 #include "domain/Configuration.h"
@@ -24,12 +26,15 @@ struct HistoryRepairResult
 class HistoryStore final
 {
   public:
+    using CancellationCallback = std::function<bool()>;
+
     explicit HistoryStore(StoragePaths paths);
 
     [[nodiscard]] QList<HistoryRecord> loadHistory() const;
     [[nodiscard]] QList<HistoryRecord> loadHistoryForRoot(const QString &rootId) const;
-    [[nodiscard]] SnapshotCommitResult commitSnapshot(const Snapshot &snapshot,
-                                                      int retention) const;
+    [[nodiscard]] SnapshotCommitResult
+    commitSnapshot(const Snapshot &snapshot, int retention,
+                   const CancellationCallback &cancelled = {}) const;
     void updateDescription(const QString &snapshotId, const QString &description) const;
     void deleteSnapshot(const QString &snapshotId) const;
     void clearRootHistory(const QString &rootId) const;

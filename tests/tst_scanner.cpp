@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <memory>
 
 #include <QDir>
 #include <QFile>
@@ -6,8 +7,13 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 #include "domain/Snapshot.h"
 #include "paths/WindowsPaths.h"
+#include "platform/windows/NativeFileMetadata.h"
 #include "scanner/MetadataScanner.h"
 
 namespace
@@ -64,6 +70,30 @@ class ScannerTest final : public QObject
         QVERIFY(std::all_of(result.snapshot.entries.cbegin(), result.snapshot.entries.cend(),
                             [](const foldersnap::SnapshotEntry &entry)
                             { return entry.modifiedNs >= 0 && entry.createdNs >= 0; }));
+    }
+
+    void preservesFilesystemDisplayCasing()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const QString directory = temporaryDirectory.filePath("MixedFolder");
+        QVERIFY(QDir().mkpath(directory));
+        writeFile(QDir(directory).filePath("Résumé.TXT"), "content");
+
+        foldersnap::ScanRequest request;
+        request.rootId = foldersnap::createId();
+        request.displayTitle = "Display casing";
+        request.root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        const foldersnap::ScanResult result =
+            foldersnap::MetadataScanner::scan(request, {}, [] { return false; });
+
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        const auto entry =
+            std::find_if(result.snapshot.entries.cbegin(), result.snapshot.entries.cend(),
+                         [](const foldersnap::SnapshotEntry &candidate)
+                         { return candidate.path == QString::fromUtf8("mixedfolder/résumé.txt"); });
+        QVERIFY(entry != result.snapshot.entries.cend());
+        QCOMPARE(entry->displayPath, QString::fromUtf8("MixedFolder/Résumé.TXT"));
     }
 
     void cancellationStopsTraversal()
@@ -173,6 +203,75 @@ class ScannerTest final : public QObject
     }
 
 #ifdef Q_OS_WIN
+    void nativeDirectoryEnumerationDistinguishesMissingFromEmpty()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const QString emptyDirectory = temporaryDirectory.filePath("empty");
+        QVERIFY(QDir().mkpath(emptyDirectory));
+
+        int emptyEntries = 0;
+        const auto emptyError = foldersnap::enumerateDirectoryEntries(
+            emptyDirectory, [&emptyEntries](const QString &) { ++emptyEntries; });
+        QVERIFY(!emptyError.has_value());
+        QCOMPARE(emptyEntries, 0);
+
+        const auto missingError = foldersnap::enumerateDirectoryEntries(
+            temporaryDirectory.filePath("missing"), [](const QString &) {});
+        QVERIFY(missingError.has_value());
+        QCOMPARE(*missingError, foldersnap::DirectoryEnumerationError::NotFound);
+    }
+
+    void capturesSubMillisecondNativeTimestamps()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const QString filePath = temporaryDirectory.filePath("precise.txt");
+        writeFile(filePath, "precise");
+
+        constexpr qint64 kExpectedNanoseconds = 1700000000123456700LL;
+        constexpr quint64 kFileTimeTicks = 116444736000000000ULL + 17000000001234567ULL;
+        const QString nativePath = QDir::toNativeSeparators(filePath);
+        const auto closeHandle = [](HANDLE handle)
+        {
+            if (handle != nullptr && handle != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(handle);
+            }
+        };
+        const std::unique_ptr<void, decltype(closeHandle)> handle(
+            CreateFileW(reinterpret_cast<LPCWSTR>(nativePath.utf16()),
+                        FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr),
+            closeHandle);
+        QVERIFY(handle.get() != INVALID_HANDLE_VALUE);
+
+        FILETIME timestamp{static_cast<DWORD>(kFileTimeTicks & 0xffffffffULL),
+                           static_cast<DWORD>(kFileTimeTicks >> 32)};
+        QVERIFY(SetFileTime(handle.get(), &timestamp, nullptr, &timestamp));
+
+        const auto metadata = foldersnap::readNativeFileMetadata(filePath);
+        QVERIFY(metadata.has_value());
+        QCOMPARE(metadata->createdNs, kExpectedNanoseconds);
+        QCOMPARE(metadata->modifiedNs, kExpectedNanoseconds);
+
+        foldersnap::ScanRequest request;
+        request.rootId = foldersnap::createId();
+        request.displayTitle = "Precise timestamps";
+        request.root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        const foldersnap::ScanResult result =
+            foldersnap::MetadataScanner::scan(request, {}, [] { return false; });
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        const auto entry =
+            std::find_if(result.snapshot.entries.cbegin(), result.snapshot.entries.cend(),
+                         [](const foldersnap::SnapshotEntry &candidate)
+                         { return candidate.path == "precise.txt"; });
+        QVERIFY(entry != result.snapshot.entries.cend());
+        QCOMPARE(entry->createdNs, kExpectedNanoseconds);
+        QCOMPARE(entry->modifiedNs, kExpectedNanoseconds);
+    }
+
     void doesNotTraverseDirectoryJunctions()
     {
         QTemporaryDir watchedDirectory;

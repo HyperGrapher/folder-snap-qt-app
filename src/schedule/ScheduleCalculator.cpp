@@ -132,12 +132,12 @@ ScheduleDecision ScheduleCalculator::evaluate(const Schedule &schedule, UtcTimes
         }
         return {false, nextCalendarOccurrence(schedule, nowUtc, timeZone)};
     }
-    if (*schedule.nextDueAtUtc > nowUtc)
-    {
-        return {false, schedule.nextDueAtUtc};
-    }
     if (schedule.kind == ScheduleKind::Interval)
     {
+        if (*schedule.nextDueAtUtc > nowUtc)
+        {
+            return {false, schedule.nextDueAtUtc};
+        }
         const qint64 interval = schedule.intervalHours * kNanosecondsPerHour;
         const quint64 elapsed = static_cast<quint64>(nowUtc.nanoseconds) -
                                 static_cast<quint64>(schedule.nextDueAtUtc->nanoseconds);
@@ -156,6 +156,11 @@ ScheduleDecision ScheduleCalculator::evaluate(const Schedule &schedule, UtcTimes
         }
         return {true, UtcTimestamp{schedule.nextDueAtUtc->nanoseconds + advance}};
     }
-    return {true, nextCalendarOccurrence(schedule, nowUtc, timeZone)};
+
+    // Calendar schedules are anchored to local wall-clock time. Recalculate the
+    // next occurrence even when the persisted UTC value is still in the future;
+    // that value may have been computed before a system time-zone change.
+    const UtcTimestamp nextOccurrence = nextCalendarOccurrence(schedule, nowUtc, timeZone);
+    return {*schedule.nextDueAtUtc <= nowUtc, nextOccurrence};
 }
 } // namespace foldersnap

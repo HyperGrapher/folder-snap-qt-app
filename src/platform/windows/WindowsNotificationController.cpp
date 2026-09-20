@@ -280,10 +280,7 @@ void WindowsNotificationController::showScanCompleted(const QString &rootId)
 
 void WindowsNotificationController::showScanFailed(const QString &rootId, const QString &error)
 {
-    if (m_suppressedScheduledRoots.remove(rootId) > 0)
-    {
-        return;
-    }
+    m_suppressedScheduledRoots.remove(rootId);
     if (!m_activeScanRootId.isEmpty() && rootId != m_activeScanRootId)
     {
         return;

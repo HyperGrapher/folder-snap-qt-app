@@ -80,6 +80,14 @@ void sortRecords(QList<HistoryRecord> &records)
               });
 }
 
+void checkCancelled(const HistoryStore::CancellationCallback &cancelled)
+{
+    if (cancelled && cancelled())
+    {
+        throw DomainError(ErrorCode::Cancelled, "Snapshot saving was cancelled.");
+    }
+}
+
 QString idFromPayloadFilename(const QString &filename, const QString &suffix)
 {
     if (!filename.endsWith(suffix))
@@ -120,10 +128,12 @@ QList<HistoryRecord> HistoryStore::loadHistoryForRoot(const QString &rootId) con
     return records;
 }
 
-SnapshotCommitResult HistoryStore::commitSnapshot(const Snapshot &snapshot, int retention) const
+SnapshotCommitResult HistoryStore::commitSnapshot(const Snapshot &snapshot, int retention,
+                                                  const CancellationCallback &cancelled) const
 {
     validateSnapshot(snapshot);
     validateRetention(retention);
+    checkCancelled(cancelled);
     HistoryMutationLock lock(m_paths);
     ConfigurationStore configurationStore(m_paths);
     SnapshotStore snapshotStore(m_paths);
@@ -136,44 +146,57 @@ SnapshotCommitResult HistoryStore::commitSnapshot(const Snapshot &snapshot, int 
         throw DomainError(ErrorCode::InvalidData, "Snapshot ID already exists in history.");
     }
 
-    const HistoryRecord record = recordForSnapshot(snapshot, snapshotStore.saveSnapshot(snapshot));
-    records.append(record);
-    sortRecords(records);
-
+    bool payloadSaved = false;
+    bool indexSaved = false;
+    HistoryRecord record;
     QList<QString> prunedIds;
-    if (retention != 0)
-    {
-        int retainedCount = 0;
-        auto iterator = records.begin();
-        while (iterator != records.end())
-        {
-            if (iterator->rootId != record.rootId || ++retainedCount <= retention)
-            {
-                ++iterator;
-                continue;
-            }
-            prunedIds.append(iterator->snapshotId);
-            iterator = records.erase(iterator);
-        }
-    }
-
     QList<QString> tombstonedIds;
     try
     {
+        const qint64 compressedBytes = snapshotStore.saveSnapshot(snapshot, cancelled);
+        payloadSaved = true;
+        checkCancelled(cancelled);
+        record = recordForSnapshot(snapshot, compressedBytes);
+        records.append(record);
+        sortRecords(records);
+
+        if (retention != 0)
+        {
+            int retainedCount = 0;
+            auto iterator = records.begin();
+            while (iterator != records.end())
+            {
+                checkCancelled(cancelled);
+                if (iterator->rootId != record.rootId || ++retainedCount <= retention)
+                {
+                    ++iterator;
+                    continue;
+                }
+                prunedIds.append(iterator->snapshotId);
+                iterator = records.erase(iterator);
+            }
+        }
         for (const QString &prunedId : prunedIds)
         {
+            checkCancelled(cancelled);
             if (snapshotStore.movePayloadToTombstone(prunedId))
             {
                 tombstonedIds.append(prunedId);
             }
         }
+        checkCancelled(cancelled);
         configurationStore.saveHistoryIndex(records);
+        indexSaved = true;
     }
     catch (...)
     {
         for (auto iterator = tombstonedIds.crbegin(); iterator != tombstonedIds.crend(); ++iterator)
         {
             snapshotStore.restoreTombstone(*iterator);
+        }
+        if (payloadSaved && !indexSaved)
+        {
+            QFile::remove(snapshotStore.payloadPath(snapshotId));
         }
         throw;
     }
@@ -253,10 +276,6 @@ void HistoryStore::clearRootHistory(const QString &rootId) const
         {
             ids.append(record.snapshotId);
         }
-    }
-    if (ids.isEmpty())
-    {
-        return;
     }
     std::sort(ids.begin(), ids.end());
     records.erase(std::remove_if(records.begin(), records.end(),

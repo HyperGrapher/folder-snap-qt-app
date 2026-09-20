@@ -488,14 +488,7 @@ Configuration decodeConfiguration(const QByteArray &json)
     configuration.defaultRetention = smallInteger(root, "defaultRetention");
     configuration.defaultIgnoreRules = strings(root, "defaultIgnoreRules");
     configuration.launchAtStartup = boolean(root, "launchAtStartup");
-    if (root.contains("notifyScheduledBefore"))
-    {
-        configuration.notifyScheduledBefore = boolean(root, "notifyScheduledBefore");
-    }
-    else
-    {
-        configuration.notifyScheduledBefore = boolean(root, "notifyScheduledSuccess");
-    }
+    configuration.notifyScheduledBefore = boolean(root, "notifyScheduledBefore");
     configuration.closeToTray = boolean(root, "closeToTray");
     for (const auto &value : array(root["roots"], "roots"))
     {

@@ -100,6 +100,26 @@ class ScheduleTest final : public QObject
         QCOMPARE(local.date(), QDate(2026, 3, 29));
         QCOMPARE(local.time(), QTime(3, 30));
     }
+
+    void reanchorsFutureCalendarDueTimeAfterTimeZoneChange()
+    {
+        const QTimeZone berlin("Europe/Berlin");
+        QVERIFY(berlin.isValid());
+        foldersnap::Schedule schedule;
+        schedule.kind = foldersnap::ScheduleKind::Daily;
+        schedule.hour = 9;
+        schedule.minute = 0;
+        // This value was calculated while the machine used UTC. In Berlin the
+        // same local occurrence is an hour earlier, so the persisted value is
+        // stale even though it is still in the future.
+        schedule.nextDueAtUtc = utc("2026-01-01T09:00:00Z");
+
+        const foldersnap::ScheduleDecision decision =
+            foldersnap::ScheduleCalculator::evaluate(schedule, utc("2026-01-01T08:30:00Z"), berlin);
+
+        QVERIFY(!decision.shouldRun);
+        QCOMPARE(iso(*decision.nextDueAtUtc), QString("2026-01-02T08:00:00Z"));
+    }
 };
 
 QTEST_MAIN(ScheduleTest)

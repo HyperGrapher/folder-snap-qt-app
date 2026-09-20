@@ -6,10 +6,21 @@ import FolderSnap
 
 ColumnLayout {
     id: page
-    required property UiPreviewState appState
+    required property AppState appState
     required property MotionPolicy motion
     readonly property bool showSizeColumns: width >= 980
+    property string pendingSearch: page.appState.search
     spacing: 18
+
+    Timer {
+        id: searchDebounce
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (page.appState.search !== page.pendingSearch)
+                page.appState.search = page.pendingSearch;
+        }
+    }
 
     RowLayout {
         Layout.fillWidth: true
@@ -371,7 +382,20 @@ ColumnLayout {
                         color: Theme.warning
                     }
                     LabelText {
-                        text: page.appState.warningCount + " unreadable paths · Some changes may be uncertain."
+                        text: {
+                            var parts = [];
+                            if (page.appState.beforeWarningCount > 0)
+                                parts.push(page.appState.beforeWarningCount + " before warnings");
+                            if (page.appState.afterWarningCount > 0)
+                                parts.push(page.appState.afterWarningCount + " after warnings");
+                            if (page.appState.uncertainCount > 0)
+                                parts.push(page.appState.uncertainCount + " uncertain");
+                            if (page.appState.scopeDifferenceCount > 0)
+                                parts.push(page.appState.scopeDifferenceCount + " scope differences");
+                            if (page.appState.ignoreRulesDiffer)
+                                parts.push("exclusion rules changed");
+                            return parts.join(" · ");
+                        }
                         color: Theme.warning
                         font.pixelSize: 10
                         Layout.fillWidth: true
@@ -403,7 +427,10 @@ ColumnLayout {
                         SearchField {
                             Layout.fillWidth: true
                             text: page.appState.search
-                            onTextChanged: page.appState.search = text
+                            onTextEdited: {
+                                page.pendingSearch = text;
+                                searchDebounce.restart();
+                            }
                         }
                         SelectBox {
                             model: ["All changes", "Added", "Removed", "Modified"]

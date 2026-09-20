@@ -14,6 +14,7 @@
 #include <QHash>
 #include <QLocale>
 #include <QPromise>
+#include <QRegularExpression>
 #include <QSet>
 #include <QTimeZone>
 #include <QUrl>
@@ -24,6 +25,8 @@
 #include "diff/ComparisonTree.h"
 #include "diff/DiffEngine.h"
 #include "domain/DomainError.h"
+#include "platform/windows/NativeFileMetadata.h"
+#include "platform/windows/WindowsStartupController.h"
 #include "schedule/ScheduleCalculator.h"
 #include "storage/ConfigurationStore.h"
 #include "storage/HistoryStore.h"
@@ -177,27 +180,41 @@ QString scheduleName(const foldersnap::Schedule &schedule)
 foldersnap::Schedule parseSchedule(const QString &text)
 {
     foldersnap::Schedule schedule;
+    if (text == "Manual only")
+    {
+        return schedule;
+    }
     if (text.startsWith("Every "))
     {
         schedule.kind = foldersnap::ScheduleKind::Interval;
         schedule.intervalHours = text.section(' ', 1, 1).toInt();
     }
-    else if (text.startsWith("Daily"))
+    else if (const auto match = QRegularExpression("^Daily at (\\d{1,2}):(\\d{2})$").match(text);
+             match.hasMatch())
     {
         schedule.kind = foldersnap::ScheduleKind::Daily;
-        schedule.hour = 9;
+        schedule.hour = match.captured(1).toInt();
+        schedule.minute = match.captured(2).toInt();
     }
-    else if (text.startsWith("Weekly"))
+    else if (const auto match =
+                 QRegularExpression("^Weekly · ([A-Za-z]+) (\\d{1,2}):(\\d{2})$").match(text);
+             match.hasMatch())
     {
         schedule.kind = foldersnap::ScheduleKind::Weekly;
-        schedule.weekday = 1;
-        schedule.hour = 9;
+        const QStringList weekdays{"Sunday",   "Monday", "Tuesday", "Wednesday",
+                                   "Thursday", "Friday", "Saturday"};
+        schedule.weekday = weekdays.indexOf(match.captured(1));
+        schedule.hour = match.captured(2).toInt();
+        schedule.minute = match.captured(3).toInt();
     }
-    else if (text.startsWith("Monthly"))
+    else if (const auto match =
+                 QRegularExpression("^Monthly · day (\\d{1,2}), (\\d{1,2}):(\\d{2})$").match(text);
+             match.hasMatch())
     {
         schedule.kind = foldersnap::ScheduleKind::Monthly;
-        schedule.dayOfMonth = 1;
-        schedule.hour = 9;
+        schedule.dayOfMonth = match.captured(1).toInt();
+        schedule.hour = match.captured(2).toInt();
+        schedule.minute = match.captured(3).toInt();
     }
     return schedule;
 }
@@ -311,9 +328,14 @@ ComparisonJobResult compareSnapshots(const foldersnap::StoragePaths &paths, cons
         result.removedCount = static_cast<int>(diff.summary.removedCount);
         result.modifiedCount = static_cast<int>(diff.summary.modifiedCount);
         result.unchangedCount = static_cast<int>(diff.summary.unchangedCount);
-        result.warningCount =
-            diff.summary.beforeWarningCount + diff.summary.afterWarningCount +
-            static_cast<int>(diff.summary.uncertainCount + diff.summary.scopeDifferenceCount);
+        result.beforeWarningCount = diff.summary.beforeWarningCount;
+        result.afterWarningCount = diff.summary.afterWarningCount;
+        result.uncertainCount = static_cast<int>(diff.summary.uncertainCount);
+        result.scopeDifferenceCount = static_cast<int>(diff.summary.scopeDifferenceCount);
+        result.ignoreRulesDiffer = diff.summary.ignoreRulesDiffer;
+        result.warningCount = result.beforeWarningCount + result.afterWarningCount +
+                              result.uncertainCount + result.scopeDifferenceCount +
+                              (result.ignoreRulesDiffer ? 1 : 0);
         result.comparedCount = static_cast<int>(diff.summary.comparedCount);
         result.netSize = diff.summary.netFileBytes;
 
@@ -532,6 +554,14 @@ AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths()
     }
     m_closeToTray = m_configuration.closeToTray;
     m_launchAtStartup = m_configuration.launchAtStartup;
+    if (m_launchAtStartup)
+    {
+        QString startupError;
+        if (!WindowsStartupController::setEnabled(true, &startupError))
+        {
+            m_scanError = startupError;
+        }
+    }
     m_notifyScheduledBefore = m_configuration.notifyScheduledBefore;
     m_retention = m_configuration.defaultRetention;
     m_scanCoordinator = std::make_unique<foldersnap::ScanCoordinator>(this);
@@ -618,7 +648,25 @@ AppState::AppState(QObject *parent) : QObject(parent), m_paths(appStoragePaths()
     QTimer::singleShot(0, this, &AppState::evaluateSchedules);
 }
 
-AppState::~AppState() = default;
+AppState::~AppState()
+{
+    m_scheduleTimer.stop();
+    if (m_cleanupExecutionWatcher && m_cleanupExecutionWatcher->isRunning())
+    {
+        m_cleanupExecutionWatcher->cancel();
+        m_cleanupExecutionWatcher->waitForFinished();
+    }
+    if (m_cleanupPreflightWatcher && m_cleanupPreflightWatcher->isRunning())
+    {
+        m_cleanupPreflightWatcher->cancel();
+        m_cleanupPreflightWatcher->waitForFinished();
+    }
+    if (m_comparisonWatcher && m_comparisonWatcher->isRunning())
+    {
+        m_comparisonWatcher->cancel();
+        m_comparisonWatcher->waitForFinished();
+    }
+}
 
 void AppState::setSelectedSection(Section section)
 {
@@ -693,9 +741,14 @@ void AppState::setFilter(const QString &filter)
 
 void AppState::setSheet(const QString &sheet)
 {
-    if (m_sheet == sheet)
+    const bool reviewChanged = sheet != "warnings" && m_comparisonWarningReview;
+    if (m_sheet == sheet && !reviewChanged)
     {
         return;
+    }
+    if (reviewChanged)
+    {
+        m_comparisonWarningReview = false;
     }
     m_sheet = sheet;
     emit sheetChanged();
@@ -1149,9 +1202,14 @@ void AppState::setCloseToTray(bool enabled)
     {
         return;
     }
-    m_closeToTray = enabled;
+    const foldersnap::Configuration originalConfiguration = m_configuration;
     m_configuration.closeToTray = enabled;
-    saveConfiguration();
+    if (!saveConfiguration())
+    {
+        m_configuration = originalConfiguration;
+        return;
+    }
+    m_closeToTray = enabled;
     emit preferencesChanged();
 }
 
@@ -1161,9 +1219,23 @@ void AppState::setLaunchAtStartup(bool enabled)
     {
         return;
     }
-    m_launchAtStartup = enabled;
+    const foldersnap::Configuration originalConfiguration = m_configuration;
     m_configuration.launchAtStartup = enabled;
-    saveConfiguration();
+    QString startupError;
+    if (!WindowsStartupController::setEnabled(enabled, &startupError))
+    {
+        m_configuration = originalConfiguration;
+        setToast(startupError);
+        return;
+    }
+    if (!saveConfiguration())
+    {
+        QString rollbackError;
+        (void)WindowsStartupController::setEnabled(m_launchAtStartup, &rollbackError);
+        m_configuration = originalConfiguration;
+        return;
+    }
+    m_launchAtStartup = enabled;
     emit preferencesChanged();
 }
 
@@ -1173,9 +1245,14 @@ void AppState::setNotifyScheduledBefore(bool enabled)
     {
         return;
     }
-    m_notifyScheduledBefore = enabled;
+    const foldersnap::Configuration originalConfiguration = m_configuration;
     m_configuration.notifyScheduledBefore = enabled;
-    saveConfiguration();
+    if (!saveConfiguration())
+    {
+        m_configuration = originalConfiguration;
+        return;
+    }
+    m_notifyScheduledBefore = enabled;
 
     if (!enabled)
     {
@@ -1198,9 +1275,14 @@ void AppState::setRetention(int retention)
     try
     {
         foldersnap::validateRetention(retention);
-        m_retention = retention;
+        const foldersnap::Configuration originalConfiguration = m_configuration;
         m_configuration.defaultRetention = retention;
-        saveConfiguration();
+        if (!saveConfiguration())
+        {
+            m_configuration = originalConfiguration;
+            return;
+        }
+        m_retention = retention;
         emit preferencesChanged();
     }
     catch (const foldersnap::DomainError &error)
@@ -1249,22 +1331,24 @@ QVariantList AppState::displayedChanges() const
         }
     }
     QVariantList displayed;
+    QSet<QString> matchAncestors;
+    if (searching)
+    {
+        for (const QString &match : std::as_const(matches))
+        {
+            QString parent = match;
+            while (parent.contains('/'))
+            {
+                parent = parent.left(parent.lastIndexOf('/'));
+                matchAncestors.insert(parent);
+            }
+        }
+    }
     for (const QVariant &value : m_changes)
     {
         const QVariantMap row = value.toMap();
         const QString path = row.value("path").toString();
-        bool visible = matches.contains(path);
-        if (searching && !visible)
-        {
-            for (const QString &match : std::as_const(matches))
-            {
-                if (match.startsWith(path + '/'))
-                {
-                    visible = true;
-                    break;
-                }
-            }
-        }
+        bool visible = matches.contains(path) || matchAncestors.contains(path);
         if (!searching)
         {
             visible = true;
@@ -1474,9 +1558,13 @@ void AppState::startScheduledSnapshot(const QString &rootId)
     const auto nextDue = m_pendingScheduledNextDue.find(rootId);
     if (nextDue != m_pendingScheduledNextDue.end())
     {
+        const foldersnap::Configuration originalConfiguration = m_configuration;
         root->schedule.nextDueAtUtc = nextDue.value();
         m_pendingScheduledNextDue.erase(nextDue);
-        saveConfiguration();
+        if (!saveConfiguration())
+        {
+            m_configuration = originalConfiguration;
+        }
     }
     requestSnapshot(*root, foldersnap::SnapshotTrigger::Scheduled);
 }
@@ -1520,9 +1608,14 @@ void AppState::requestSnapshot(const foldersnap::WatchedRoot &root,
         request.protectedSubtree = foldersnap::protectedDataSubtree(
             request.root, foldersnap::normalizeRootPath(m_paths.dataDirectory));
     }
-    catch (const foldersnap::DomainError &)
+    catch (const foldersnap::DomainError &error)
     {
-        request.protectedSubtree.reset();
+        failScan(root.rootId, error.message());
+        if (trigger == foldersnap::SnapshotTrigger::Manual)
+        {
+            setToast(error.message());
+        }
+        return;
     }
     if (trigger == foldersnap::SnapshotTrigger::Scheduled && !m_notifyScheduledBefore)
     {
@@ -1684,6 +1777,7 @@ void AppState::openSheet(const QString &kind)
     {
         setExportError({});
     }
+    m_comparisonWarningReview = kind == "warnings" && m_comparisonReady && hasPair();
     setSheet(kind);
 }
 
@@ -1700,6 +1794,14 @@ void AppState::openCurrentFolder()
     }
 }
 
+void AppState::openDataFolder()
+{
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(m_paths.dataDirectory)))
+    {
+        setToast("Could not open FolderSnap's data folder.");
+    }
+}
+
 void AppState::addFolder(const QUrl &folderUrl)
 {
     try
@@ -1711,6 +1813,11 @@ void AppState::addFolder(const QUrl &folderUrl)
         {
             throw foldersnap::DomainError(foldersnap::ErrorCode::InvalidPath,
                                           "Choose an existing folder.");
+        }
+        if (foldersnap::hasReparsePointInPath(normalized.displayPath))
+        {
+            throw foldersnap::DomainError(foldersnap::ErrorCode::InvalidPath,
+                                          "Choose a folder that is not inside a reparse point.");
         }
         const auto dataDirectory = foldersnap::normalizeRootPath(m_paths.dataDirectory);
         const auto protectedSubtree = foldersnap::protectedDataSubtree(normalized, dataDirectory);
@@ -1739,9 +1846,14 @@ void AppState::addFolder(const QUrl &folderUrl)
         root.normalizedPath = normalized.identityPath;
         root.ignoreRules = m_configuration.defaultIgnoreRules;
         root.retention = m_configuration.defaultRetention;
+        const foldersnap::Configuration originalConfiguration = m_configuration;
         m_configuration.roots.append(root);
         foldersnap::validateConfiguration(m_configuration);
-        saveConfiguration();
+        if (!saveConfiguration())
+        {
+            m_configuration = originalConfiguration;
+            return;
+        }
         m_rootIndex = m_configuration.roots.size() - 1;
         emit rootIndexChanged();
         refreshModels();
@@ -1895,9 +2007,21 @@ void AppState::clearSelectedRootHistory()
     {
         return;
     }
+    if (m_scanCoordinator && m_scanCoordinator->isActive(root->rootId))
+    {
+        setToast("Cancel the active snapshot before clearing this folder's history.");
+        return;
+    }
+    const QString rootId = root->rootId;
     try
     {
-        foldersnap::HistoryStore(m_paths).clearRootHistory(root->rootId);
+        foldersnap::HistoryStore(m_paths).clearRootHistory(rootId);
+        if (auto *updatedRoot = configurationRoot(rootId))
+        {
+            updatedRoot->lastSnapshotUtc.reset();
+            updatedRoot->lastScanError.clear();
+            emit configurationChanged();
+        }
         clearSnapshotPair();
         refreshModels();
         setSheet({});
@@ -1995,6 +2119,39 @@ QVariantList AppState::snapshotWarnings(const QString &snapshotId) const
     }
 }
 
+QVariantList AppState::comparisonWarnings() const
+{
+    QVariantList result;
+    const auto appendWarnings = [&result, this](const QString &snapshotId, const QString &source)
+    {
+        if (snapshotId.isEmpty())
+        {
+            return;
+        }
+        try
+        {
+            const foldersnap::Snapshot snapshot =
+                foldersnap::SnapshotStore(m_paths).loadSnapshot(snapshotId);
+            result.reserve(result.size() + snapshot.header.scanWarnings.size());
+            for (const foldersnap::ScanWarning &warning : snapshot.header.scanWarnings)
+            {
+                result.append(QVariantMap{{"path", warning.path},
+                                          {"operation", warningOperationName(warning.operation)},
+                                          {"category", warningCategoryName(warning.category)},
+                                          {"message", warning.message},
+                                          {"source", source},
+                                          {"snapshotId", snapshotId}});
+            }
+        }
+        catch (const foldersnap::DomainError &)
+        {
+        }
+    };
+    appendWarnings(m_beforeId, "Before snapshot");
+    appendWarnings(m_afterId, "After snapshot");
+    return result;
+}
+
 void AppState::refreshModels()
 {
     QList<HistoryRecord> history;
@@ -2059,11 +2216,17 @@ void AppState::refreshModels()
 
 void AppState::finishScan(const foldersnap::ScanJobResult &result)
 {
+    bool configurationSaved = true;
     if (auto *root = configurationRoot(result.rootId))
     {
+        const foldersnap::Configuration originalConfiguration = m_configuration;
         root->lastSnapshotUtc = result.commit.record.completedAtUtc;
         root->lastScanError.clear();
-        saveConfiguration();
+        configurationSaved = saveConfiguration();
+        if (!configurationSaved)
+        {
+            m_configuration = originalConfiguration;
+        }
     }
     const auto *current = currentConfigurationRoot();
     const bool isCurrent = current && current->rootId == result.rootId;
@@ -2076,9 +2239,11 @@ void AppState::finishScan(const foldersnap::ScanJobResult &result)
     refreshModels();
     if (isCurrent && result.trigger == foldersnap::SnapshotTrigger::Manual)
     {
-        setToast(QString("Snapshot saved · %1 files · %2")
-                     .arg(formatCount(result.commit.record.fileCount),
-                          formatBytes(result.commit.record.totalFileBytes)));
+        setToast(configurationSaved
+                     ? QString("Snapshot saved · %1 files · %2")
+                           .arg(formatCount(result.commit.record.fileCount),
+                                formatBytes(result.commit.record.totalFileBytes))
+                     : QString("Snapshot saved, but its status could not be persisted."));
     }
     emit scanCompleted(result.rootId, result.commit.record.snapshotId,
                        result.commit.record.warningCount);
@@ -2088,8 +2253,12 @@ void AppState::failScan(const QString &rootId, const QString &error)
 {
     if (auto *root = configurationRoot(rootId))
     {
+        const foldersnap::Configuration originalConfiguration = m_configuration;
         root->lastScanError = error;
-        saveConfiguration();
+        if (!saveConfiguration())
+        {
+            m_configuration = originalConfiguration;
+        }
     }
     const auto *current = currentConfigurationRoot();
     if (current && current->rootId == rootId)
@@ -2110,6 +2279,7 @@ void AppState::evaluateSchedules()
     const foldersnap::UtcTimestamp now{QDateTime::currentDateTimeUtc().toMSecsSinceEpoch() *
                                        1000000};
     const QTimeZone timeZone = QTimeZone::systemTimeZone();
+    const foldersnap::Configuration originalConfiguration = m_configuration;
     QStringList notificationRootIds;
     bool configurationChanged = false;
     for (foldersnap::WatchedRoot &root : m_configuration.roots)
@@ -2179,7 +2349,10 @@ void AppState::evaluateSchedules()
     }
     if (configurationChanged)
     {
-        saveConfiguration();
+        if (!saveConfiguration())
+        {
+            m_configuration = originalConfiguration;
+        }
     }
     for (const QString &rootId : notificationRootIds)
     {
@@ -2217,6 +2390,11 @@ void AppState::finishComparison()
     m_modifiedCount = result.modifiedCount;
     m_unchangedCount = result.unchangedCount;
     m_warningCount = result.warningCount;
+    m_beforeWarningCount = result.beforeWarningCount;
+    m_afterWarningCount = result.afterWarningCount;
+    m_uncertainCount = result.uncertainCount;
+    m_scopeDifferenceCount = result.scopeDifferenceCount;
+    m_ignoreRulesDiffer = result.ignoreRulesDiffer;
     m_comparedCount = result.comparedCount;
     m_netSize = result.netSize;
     rebuildCleanupCandidates();
@@ -2240,6 +2418,12 @@ void AppState::invalidateComparison()
     {
         m_comparisonWatcher->cancel();
     }
+    m_warningCount = 0;
+    m_beforeWarningCount = 0;
+    m_afterWarningCount = 0;
+    m_uncertainCount = 0;
+    m_scopeDifferenceCount = 0;
+    m_ignoreRulesDiffer = false;
     setComparing(false);
 }
 
@@ -2300,17 +2484,19 @@ void AppState::rebuildCleanupCandidates()
     emit cleanupChanged();
 }
 
-void AppState::saveConfiguration()
+bool AppState::saveConfiguration()
 {
     try
     {
         foldersnap::validateConfiguration(m_configuration);
         foldersnap::ConfigurationStore(m_paths).saveConfiguration(m_configuration);
         emit configurationChanged();
+        return true;
     }
     catch (const foldersnap::DomainError &error)
     {
         setToast(error.message());
+        return false;
     }
 }
 

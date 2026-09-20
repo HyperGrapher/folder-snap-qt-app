@@ -5,7 +5,7 @@ import FolderSnap
 TestCase {
     name: "LiveWorkflows"
 
-    UiPreviewState {
+    AppState {
         id: state
     }
 

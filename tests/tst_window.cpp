@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <type_traits>
@@ -75,6 +76,69 @@ class WindowTest final : public QObject
     QObject *pageHost() const
     {
         return m_window->findChild<QObject *>("pageHost");
+    }
+    void closeNativeFolderDialog()
+    {
+#ifdef Q_OS_WIN
+        if (QObject *picker = m_window->findChild<QObject *>("nativeFolderPicker"))
+        {
+            QMetaObject::invokeMethod(picker, "close", Qt::QueuedConnection);
+        }
+
+        const HWND mainWindow = reinterpret_cast<HWND>(m_window->winId());
+        struct DialogWindows
+        {
+            HWND mainWindow;
+            DWORD testProcessId;
+            std::vector<HWND> matches;
+        } dialogWindows{mainWindow, GetCurrentProcessId(), {}};
+
+        EnumWindows(
+            [](HWND window, LPARAM data) -> BOOL
+            {
+                auto *windows = reinterpret_cast<DialogWindows *>(data);
+                if (window == windows->mainWindow || !IsWindowVisible(window))
+                {
+                    return TRUE;
+                }
+
+                wchar_t title[256]{};
+                GetWindowTextW(window, title, static_cast<int>(std::size(title)));
+                const QString dialogTitle = QString::fromWCharArray(title).trimmed();
+                if (dialogTitle.isEmpty())
+                {
+                    return TRUE;
+                }
+
+                DWORD processId = 0;
+                GetWindowThreadProcessId(window, &processId);
+                const bool isExactFolderPicker =
+                    dialogTitle.compare("Choose a folder to watch", Qt::CaseInsensitive) == 0;
+                const bool isTestWindow = processId == windows->testProcessId;
+                const bool isLikelyFolderDialog =
+                    dialogTitle.contains("folder", Qt::CaseInsensitive) ||
+                    dialogTitle.contains("choose", Qt::CaseInsensitive);
+                if (isExactFolderPicker || (isTestWindow && isLikelyFolderDialog))
+                {
+                    windows->matches.push_back(window);
+                }
+                return TRUE;
+            },
+            reinterpret_cast<LPARAM>(&dialogWindows));
+
+        for (const HWND window : dialogWindows.matches)
+        {
+            PostMessageW(window, WM_KEYDOWN, VK_ESCAPE, 0);
+            PostMessageW(window, WM_KEYUP, VK_ESCAPE, 0);
+            QTest::qWait(50);
+            if (IsWindow(window))
+            {
+                PostMessageW(window, WM_CLOSE, 0, 0);
+            }
+        }
+#else
+        Q_UNUSED(this);
+#endif
     }
     void capture(const QString &name)
     {
@@ -214,7 +278,16 @@ class WindowTest final : public QObject
              {"add", "folder", "detail", "warnings", "exportComparison", "cleanup", "delete"})
         {
             m_state->setProperty("sheet", sheet);
-            QTest::qWait(220);
+            if (sheet == "add")
+            {
+                closeNativeFolderDialog();
+                QTest::qWait(220);
+                closeNativeFolderDialog();
+            }
+            else
+            {
+                QTest::qWait(220);
+            }
             m_state->setProperty("sheet", "");
             QTest::qWait(130);
         }
@@ -301,6 +374,9 @@ class WindowTest final : public QObject
     }
     void nativeCornersAndCaption()
     {
+        closeNativeFolderDialog();
+        m_controller->activate();
+        QVERIFY(QTest::qWaitForWindowActive(m_window));
         const auto handle = reinterpret_cast<HWND>(m_window->winId());
         if (QOperatingSystemVersion::current().microVersion() < 22000)
         {

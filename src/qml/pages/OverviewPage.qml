@@ -5,7 +5,7 @@ import FolderSnap
 
 ScrollView {
     id: page
-    required property UiPreviewState appState
+    required property AppState appState
     required property MotionPolicy motion
     contentWidth: availableWidth
     clip: true

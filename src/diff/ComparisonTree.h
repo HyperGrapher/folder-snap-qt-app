@@ -24,6 +24,8 @@ struct ComparisonTreeRow
     bool hasAfterSize{false};
 };
 
+[[nodiscard]] int naturalPathCompare(const QString &left, const QString &right);
+
 [[nodiscard]] QList<ComparisonTreeRow>
 buildComparisonTree(const Snapshot &before, const Snapshot &after, const DiffResult &diff,
                     const std::function<bool()> &cancelled = {});

@@ -32,8 +32,9 @@ ScanJobResult runScan(const ScanJobRequest &request, QPromise<ScanJobResult> &pr
             result.error = scan.error;
             return result;
         }
-        result.commit =
-            HistoryStore(request.paths).commitSnapshot(scan.snapshot, request.retention);
+        result.commit = HistoryStore(request.paths)
+                            .commitSnapshot(scan.snapshot, request.retention,
+                                            [&promise]() { return promise.isCanceled(); });
         promise.setProgressValue(100);
     }
     catch (const DomainError &error)

@@ -1,6 +1,9 @@
 #include "cleanup/CleanupExecutor.h"
 
 #include <algorithm>
+#include <atomic>
+#include <memory>
+#include <optional>
 #include <utility>
 
 #include <QDateTime>
@@ -10,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QUuid>
 
 #ifdef Q_OS_WIN
 #include <ShObjIdl.h>
@@ -17,7 +21,7 @@
 #endif
 
 #include "domain/DomainError.h"
-#include "storage/AtomicFile.h"
+#include "platform/windows/NativeFileMetadata.h"
 
 namespace foldersnap
 {
@@ -122,6 +126,145 @@ bool isMissingResult(HRESULT result)
            result == HRESULT_FROM_WIN32(ERROR_INVALID_NAME);
 }
 
+bool isMissingWindowsError(DWORD error)
+{
+    return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ||
+           error == ERROR_INVALID_NAME;
+}
+
+class FileOperationProgressSink final : public IFileOperationProgressSink
+{
+  public:
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID interfaceId, void **object) override
+    {
+        if (!object)
+        {
+            return E_POINTER;
+        }
+        *object = nullptr;
+        if (interfaceId == IID_IUnknown || interfaceId == IID_IFileOperationProgressSink)
+        {
+            *object = static_cast<IFileOperationProgressSink *>(this);
+            AddRef();
+            return S_OK;
+        }
+        return E_NOINTERFACE;
+    }
+
+    ULONG STDMETHODCALLTYPE AddRef() override
+    {
+        return ++m_references;
+    }
+
+    ULONG STDMETHODCALLTYPE Release() override
+    {
+        const ULONG remaining = --m_references;
+        if (remaining == 0)
+        {
+            delete this;
+        }
+        return remaining;
+    }
+
+    HRESULT STDMETHODCALLTYPE StartOperations() override
+    {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE FinishOperations(HRESULT result) override
+    {
+        m_finishResult = result;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE PreRenameItem(DWORD, IShellItem *, LPCWSTR) override
+    {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE PostRenameItem(DWORD, IShellItem *, LPCWSTR, HRESULT,
+                                             IShellItem *) override
+    {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE PreMoveItem(DWORD, IShellItem *, IShellItem *, LPCWSTR) override
+    {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE PostMoveItem(DWORD, IShellItem *, IShellItem *, LPCWSTR, HRESULT,
+                                           IShellItem *) override
+    {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE PreCopyItem(DWORD, IShellItem *, IShellItem *, LPCWSTR) override
+    {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE PostCopyItem(DWORD, IShellItem *, IShellItem *, LPCWSTR, HRESULT,
+                                           IShellItem *) override
+    {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE PreDeleteItem(DWORD, IShellItem *) override
+    {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE PostDeleteItem(DWORD, IShellItem *, HRESULT result,
+                                             IShellItem *) override
+    {
+        m_deleteResult = result;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE PreNewItem(DWORD, IShellItem *, LPCWSTR) override
+    {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE PostNewItem(DWORD, IShellItem *, LPCWSTR, LPCWSTR, DWORD, HRESULT,
+                                          IShellItem *) override
+    {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE UpdateProgress(UINT, UINT) override
+    {
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE ResetTimer() override
+    {
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE PauseTimer() override
+    {
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE ResumeTimer() override
+    {
+        return S_OK;
+    }
+
+    [[nodiscard]] std::optional<HRESULT> deleteResult() const
+    {
+        return m_deleteResult;
+    }
+    [[nodiscard]] std::optional<HRESULT> finishResult() const
+    {
+        return m_finishResult;
+    }
+
+  private:
+    std::atomic<ULONG> m_references{1};
+    std::optional<HRESULT> m_deleteResult;
+    std::optional<HRESULT> m_finishResult;
+};
+
 template <typename T> void releaseCom(T *object)
 {
     if (object)
@@ -151,7 +294,7 @@ CleanupMoveResult moveToRecycleBin(const QString &absolutePath)
             break;
         }
 
-        const QString nativePath = QDir::toNativeSeparators(absolutePath);
+        const QString nativePath = extendedNativePath(absolutePath);
         hr = SHCreateItemFromParsingName(reinterpret_cast<LPCWSTR>(nativePath.utf16()), nullptr,
                                          IID_PPV_ARGS(&item));
         if (FAILED(hr))
@@ -172,7 +315,16 @@ CleanupMoveResult moveToRecycleBin(const QString &absolutePath)
             result.detail = hresultDetail("Recycle Bin operation flags", hr);
             break;
         }
-        hr = operation->DeleteItem(item, nullptr);
+        const auto releaseProgress = [](FileOperationProgressSink *progress)
+        {
+            if (progress)
+            {
+                progress->Release();
+            }
+        };
+        std::unique_ptr<FileOperationProgressSink, decltype(releaseProgress)> progress(
+            new FileOperationProgressSink, releaseProgress);
+        hr = operation->DeleteItem(item, progress.get());
         if (FAILED(hr))
         {
             result.detail = hresultDetail("Recycle Bin delete request", hr);
@@ -198,6 +350,44 @@ CleanupMoveResult moveToRecycleBin(const QString &absolutePath)
             result.detail = "Windows Shell aborted the Recycle Bin move.";
             break;
         }
+
+        const std::optional<HRESULT> deleteResult = progress->deleteResult();
+        if (!deleteResult)
+        {
+            result.detail = "Windows Shell did not report the Recycle Bin item result.";
+            break;
+        }
+        if (FAILED(*deleteResult))
+        {
+            result.alreadyMissing = isMissingResult(*deleteResult);
+            result.detail = result.alreadyMissing
+                                ? "The live path disappeared before it could be moved."
+                                : hresultDetail("Recycle Bin item move", *deleteResult);
+            break;
+        }
+
+        if (const std::optional<HRESULT> finishResult = progress->finishResult();
+            finishResult && FAILED(*finishResult))
+        {
+            result.detail = hresultDetail("Recycle Bin operation", *finishResult);
+            break;
+        }
+
+        const DWORD remainingAttributes =
+            GetFileAttributesW(reinterpret_cast<LPCWSTR>(nativePath.utf16()));
+        if (remainingAttributes != INVALID_FILE_ATTRIBUTES)
+        {
+            result.detail =
+                "Windows Shell reported success, but the original path is still present.";
+            break;
+        }
+        const DWORD remainingError = GetLastError();
+        if (!isMissingWindowsError(remainingError))
+        {
+            result.detail = hresultDetail("Recycle Bin postcondition check",
+                                          HRESULT_FROM_WIN32(remainingError));
+            break;
+        }
         result.moved = true;
     } while (false);
 
@@ -220,16 +410,6 @@ CleanupMoveCallback defaultMoveCallback()
 void writeAudit(const CleanupExecutionRequest &request, const CleanupExecutionResult &result)
 {
     const QString path = CleanupExecutor::auditPath(request.paths, request.rootId);
-    QByteArray contents;
-    if (QFileInfo::exists(path))
-    {
-        contents = readFileLimited(path, kMaximumCleanupAuditBytes);
-        if (!contents.isEmpty() && !contents.endsWith('\n'))
-        {
-            contents.append('\n');
-        }
-    }
-
     QJsonArray items;
     for (const CleanupExecutionItem &item : result.items)
     {
@@ -248,9 +428,67 @@ void writeAudit(const CleanupExecutionRequest &request, const CleanupExecutionRe
         {"alreadyMissingCount", result.summary.alreadyMissingCount},
         {"failedCount", result.summary.failedCount},
         {"items", items}};
-    contents.append(QJsonDocument(event).toJson(QJsonDocument::Compact));
-    contents.append('\n');
-    replaceFileAtomically(path, contents);
+    QByteArray line = QJsonDocument(event).toJson(QJsonDocument::Compact);
+    line.append('\n');
+
+    const QFileInfo fileInfo(path);
+    if (!QDir().mkpath(fileInfo.absolutePath()))
+    {
+        throw DomainError(ErrorCode::Io, "Could not create the cleanup audit directory.");
+    }
+    if (fileInfo.exists() && fileInfo.size() > kMaximumCleanupAuditBytes - line.size())
+    {
+        const QString rotatedPath =
+            QDir(fileInfo.absolutePath())
+                .filePath(QString("cleanup-log.%1.jsonl")
+                              .arg(QUuid::createUuid().toString(QUuid::Id128)));
+        if (!QFile::rename(path, rotatedPath))
+        {
+            throw DomainError(ErrorCode::Io, "Could not rotate the cleanup audit log.");
+        }
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append))
+    {
+        throw DomainError(
+            ErrorCode::Io,
+            QString("Could not open the cleanup audit log: %1").arg(file.errorString()));
+    }
+    if (file.write(line) != line.size() || !file.flush())
+    {
+        throw DomainError(
+            ErrorCode::Io,
+            QString("Could not append the cleanup audit log: %1").arg(file.errorString()));
+    }
+}
+
+void ensureAuditWritable(const CleanupExecutionRequest &request)
+{
+    const QString path = CleanupExecutor::auditPath(request.paths, request.rootId);
+    const QFileInfo fileInfo(path);
+    if (!QDir().mkpath(fileInfo.absolutePath()))
+    {
+        throw DomainError(ErrorCode::Io, "Could not create the cleanup audit directory.");
+    }
+    if (fileInfo.exists() && fileInfo.size() >= kMaximumCleanupAuditBytes)
+    {
+        const QString rotatedPath =
+            QDir(fileInfo.absolutePath())
+                .filePath(QString("cleanup-log.%1.jsonl")
+                              .arg(QUuid::createUuid().toString(QUuid::Id128)));
+        if (!QFile::rename(path, rotatedPath))
+        {
+            throw DomainError(ErrorCode::Io, "Could not rotate the cleanup audit log.");
+        }
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append) || !file.flush())
+    {
+        throw DomainError(
+            ErrorCode::Io,
+            QString("Could not prepare the cleanup audit log: %1").arg(file.errorString()));
+    }
 }
 } // namespace
 
@@ -288,6 +526,7 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
             result.error = "No cleanup items were selected.";
             return result;
         }
+        ensureAuditWritable(request);
 
         QHash<QString, EntryType> typesByPath;
         for (const CleanupCandidate &candidate : request.candidates)
@@ -342,36 +581,33 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
                 continue;
             }
 
-            if (typesByPath.value(path) == EntryType::Directory)
+            const CleanupPreflightResult currentCheck =
+                CleanupPreflight::inspect(request.root, request.candidates, {path}, cancelled);
+            if (currentCheck.cancelled)
             {
-                const CleanupPreflightResult directoryCheck =
-                    CleanupPreflight::inspect(request.root, request.candidates, {path}, cancelled);
-                if (directoryCheck.cancelled)
+                result.cancelled = true;
+                break;
+            }
+            const CleanupPreflightItem *current = nullptr;
+            for (const CleanupPreflightItem &candidate : currentCheck.items)
+            {
+                if (candidate.path == path)
                 {
-                    result.cancelled = true;
+                    current = &candidate;
                     break;
                 }
-                const CleanupPreflightItem *current = nullptr;
-                for (const CleanupPreflightItem &candidate : directoryCheck.items)
-                {
-                    if (candidate.path == path)
-                    {
-                        current = &candidate;
-                        break;
-                    }
-                }
-                if (!current || current->status == CleanupStatus::AlreadyMissing)
-                {
-                    item->status = CleanupStatus::AlreadyMissing;
-                    item->detail = "The directory disappeared before it could be moved.";
-                    continue;
-                }
-                if (current->status != CleanupStatus::Ready)
-                {
-                    item->status = current->status;
-                    item->detail = current->detail;
-                    continue;
-                }
+            }
+            if (!current)
+            {
+                item->status = CleanupStatus::Failed;
+                item->detail = "The live path could not be revalidated.";
+                continue;
+            }
+            if (current->status != CleanupStatus::Ready)
+            {
+                item->status = current->status;
+                item->detail = current->detail;
+                continue;
             }
 
             QString absolutePath;
@@ -385,6 +621,42 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
                 item->detail = error.message();
                 continue;
             }
+
+            if (typesByPath.value(path) == EntryType::Directory)
+            {
+                const QFileInfo directoryInfo(absolutePath);
+                if (!directoryInfo.exists())
+                {
+                    item->status = CleanupStatus::AlreadyMissing;
+                    item->detail = "The directory disappeared before it could be moved.";
+                    continue;
+                }
+                if (!directoryInfo.isDir())
+                {
+                    item->status = CleanupStatus::TypeChanged;
+                    item->detail = "The live path is no longer a directory.";
+                    continue;
+                }
+                if (!directoryInfo.isReadable())
+                {
+                    item->status = CleanupStatus::AccessDeniedOrUnreadable;
+                    item->detail = "The directory could not be read before it was moved.";
+                    continue;
+                }
+
+                const QFileInfoList remainingEntries =
+                    QDir(absolutePath)
+                        .entryInfoList(QDir::NoDotAndDotDot | QDir::AllEntries | QDir::Hidden |
+                                           QDir::System,
+                                       QDir::NoSort);
+                if (!remainingEntries.isEmpty())
+                {
+                    item->status = CleanupStatus::Failed;
+                    item->detail = "The directory still contains content, so it was kept in place.";
+                    continue;
+                }
+            }
+
             const CleanupMoveResult moveResult = moveItem(absolutePath);
             if (moveResult.moved)
             {

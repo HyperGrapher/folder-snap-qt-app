@@ -206,7 +206,9 @@
       text(nameCell, displayName(node)); text(nameCell, node.path, "path"); container.appendChild(nameCell);
       text(container, typeLabel(metadata(node).type || (isFolder(node) ? "directory" : "other")), "meta type");
       if (isComparison) {
-        const before = node.data?.before?.sizeBytes, after = node.data?.after?.sizeBytes;
+        const folderSizes = isFolder(node) && report.folderSizes ? report.folderSizes[node.path] : null;
+        const before = folderSizes ? (folderSizes.beforePresent ? folderSizes.beforeBytes : null) : node.data?.before?.sizeBytes;
+        const after = folderSizes ? (folderSizes.afterPresent ? folderSizes.afterBytes : null) : node.data?.after?.sizeBytes;
         const size = before != null || after != null ? formatBytes(before) + " → " + formatBytes(after) : formatBytes(sizeValue(node));
         text(container, size, "meta size");
       } else text(container, formatBytes(sizeValue(node)), "meta size");

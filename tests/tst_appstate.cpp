@@ -96,6 +96,22 @@ class AppStateTest final : public QObject
                 QVERIFY(progress <= 100);
             }
 
+            const foldersnap::StoragePaths paths =
+                foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+            foldersnap::SnapshotStore snapshotStore(paths);
+            auto beforeWithWarning =
+                snapshotStore.loadSnapshot(state.snapshots().at(1).toMap().value("id").toString());
+            beforeWithWarning.header.scanWarnings.append(
+                {"before-only", foldersnap::WarningOperation::Enumerate,
+                 foldersnap::WarningCategory::AccessDenied, "before warning"});
+            static_cast<void>(snapshotStore.saveSnapshot(beforeWithWarning));
+            auto afterWithWarning =
+                snapshotStore.loadSnapshot(state.snapshots().at(0).toMap().value("id").toString());
+            afterWithWarning.header.scanWarnings.append(
+                {"after-only", foldersnap::WarningOperation::Stat, foldersnap::WarningCategory::Io,
+                 "after warning"});
+            static_cast<void>(snapshotStore.saveSnapshot(afterWithWarning));
+
             const QVariantList snapshots = state.snapshots();
             state.chooseSnapshot(snapshots.at(1).toMap().value("id").toString());
             state.chooseSnapshot(snapshots.at(0).toMap().value("id").toString());
@@ -105,6 +121,18 @@ class AppStateTest final : public QObject
             QCOMPARE(state.modifiedCount(), 1);
             QCOMPARE(state.addedCount(), 4);
             QCOMPARE(state.removedCount(), 0);
+            QCOMPARE(state.beforeWarningCount(), 1);
+            QCOMPARE(state.afterWarningCount(), 1);
+            QCOMPARE(state.uncertainCount(), 0);
+            QCOMPARE(state.scopeDifferenceCount(), 0);
+            QVERIFY(!state.ignoreRulesDiffer());
+            const QVariantList comparisonWarnings = state.comparisonWarnings();
+            QCOMPARE(comparisonWarnings.size(), 2);
+            QCOMPARE(comparisonWarnings.first().toMap().value("source").toString(),
+                     QString("Before snapshot"));
+            state.openSheet("warnings");
+            QVERIFY(state.comparisonWarningReview());
+            state.setSheet({});
 
             const QVariantList cleanupCandidates = state.cleanupCandidates();
             QCOMPARE(cleanupCandidates.size(), 4);
@@ -275,6 +303,62 @@ class AppStateTest final : public QObject
         QVERIFY(!persisted.archived);
     }
 
+    void configurationWriteFailureDoesNotPublishLiveState()
+    {
+        QTemporaryDir dataParent;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataParent.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        const QString blockedDataPath = dataParent.filePath("not-a-directory");
+        QFile blocker(blockedDataPath);
+        QVERIFY(blocker.open(QIODevice::WriteOnly));
+        QVERIFY(blocker.write("blocked") > 0);
+        blocker.close();
+
+        qputenv("FOLDERSNAP_DATA_DIR", blockedDataPath.toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+        AppState state;
+        QSignalSpy configurationSpy(&state, &AppState::configurationChanged);
+
+        state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
+
+        QVERIFY(state.roots().isEmpty());
+        QCOMPARE(configurationSpy.count(), 0);
+        QVERIFY(!state.toast().contains("Folder added"));
+        QVERIFY(state.closeToTray());
+        state.setCloseToTray(false);
+        QVERIFY(state.closeToTray());
+    }
+
+    void clearHistoryRejectsAnActiveScan()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+
+        QFile file(watchedDirectory.filePath("active.txt"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QVERIFY(file.write("active scan") > 0);
+        file.close();
+
+        AppState state;
+        state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
+        QSignalSpy startedSpy(&state, &AppState::scanStarted);
+        QObject::connect(&state, &AppState::scanStarted, &state,
+                         [&state](const QString &) { state.clearSelectedRootHistory(); });
+
+        state.takeSnapshot();
+
+        QTRY_COMPARE_WITH_TIMEOUT(startedSpy.count(), 1, 5000);
+        QCOMPARE(state.toast(),
+                 QString("Cancel the active snapshot before clearing this folder's history."));
+        QTRY_VERIFY_WITH_TIMEOUT(!state.scanning(), 5000);
+        QCOMPARE(state.snapshots().size(), 1);
+    }
+
     void removesWatchedFolderWithoutTouchingItsFiles()
     {
         QTemporaryDir dataDirectory;
@@ -315,6 +399,29 @@ class AppStateTest final : public QObject
         QVERIFY(!foldersnap::SnapshotStore(paths).hasPayload(snapshotId));
         QVERIFY(QFile::exists(watchedFile));
         QCOMPARE(QFileInfo(watchedFile).size(), qint64(9));
+    }
+
+    void preservesNonDefaultCalendarScheduleWhenSavingPreferences()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+
+        AppState state;
+        state.addFolder(QUrl::fromLocalFile(watchedDirectory.path()));
+        state.updateRoot("Scheduled folder", "Daily at 14:37", 50, {}, false);
+
+        QCOMPARE(state.currentRoot().value("schedule").toString(), QString("Daily at 14:37"));
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        const foldersnap::WatchedRoot persisted =
+            foldersnap::ConfigurationStore(paths).loadConfiguration().value.roots.first();
+        QCOMPARE(persisted.schedule.kind, foldersnap::ScheduleKind::Daily);
+        QCOMPARE(persisted.schedule.hour, 14);
+        QCOMPARE(persisted.schedule.minute, 37);
     }
 
     void reportsScanFailures()

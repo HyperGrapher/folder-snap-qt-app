@@ -136,6 +136,11 @@ qint64 fileBytes(const std::optional<SnapshotEntry> &entry)
 }
 } // namespace
 
+int naturalPathCompare(const QString &left, const QString &right)
+{
+    return naturalCompare(left, right);
+}
+
 QList<ComparisonTreeRow> buildComparisonTree(const Snapshot &before, const Snapshot &after,
                                              const DiffResult &diff,
                                              const std::function<bool()> &cancelled)

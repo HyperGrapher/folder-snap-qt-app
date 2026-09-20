@@ -105,6 +105,11 @@ RootPath normalizeRootPath(const QString &path)
 
 QString normalizeRelativePath(const QString &path)
 {
+    return normalizeRelativeDisplayPath(path).toLower();
+}
+
+QString normalizeRelativeDisplayPath(const QString &path)
+{
     const QString relative = separators(path);
     if (relative.isEmpty())
     {
@@ -115,7 +120,7 @@ QString normalizeRelativePath(const QString &path)
     {
         validateComponent(component);
     }
-    return relative.toLower();
+    return relative;
 }
 
 void validateIdentityPath(const QString &path)

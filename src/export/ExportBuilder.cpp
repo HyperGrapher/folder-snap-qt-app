@@ -107,6 +107,10 @@ QJsonObject optionalEntryDto(const std::optional<SnapshotEntry> &entry)
 
 QString csvField(QString value)
 {
+    if (!value.isEmpty() && QStringLiteral("=+-@").contains(value.front()))
+    {
+        value.prepend('\'');
+    }
     if (value.contains(',') || value.contains('"') || value.contains('\r') || value.contains('\n'))
     {
         value.replace('"', "\"\"");

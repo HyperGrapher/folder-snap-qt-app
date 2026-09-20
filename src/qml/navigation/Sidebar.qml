@@ -5,7 +5,7 @@ import FolderSnap
 
 Rectangle {
     id: sidebar
-    required property UiPreviewState appState
+    required property AppState appState
     required property MotionPolicy motion
     color: Theme.sidebar
     Rectangle {

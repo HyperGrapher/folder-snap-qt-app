@@ -15,6 +15,7 @@ struct RootPath
 
 [[nodiscard]] RootPath normalizeRootPath(const QString &path);
 [[nodiscard]] QString normalizeRelativePath(const QString &path);
+[[nodiscard]] QString normalizeRelativeDisplayPath(const QString &path);
 void validateIdentityPath(const QString &path);
 void validateStorageId(const QString &id);
 // Lexical containment only. Live traversal/cleanup must also check reparse-point ancestors.

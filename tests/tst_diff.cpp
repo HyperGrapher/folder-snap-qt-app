@@ -93,6 +93,21 @@ class DiffTest final : public QObject
         QCOMPARE(result.summary.netFileBytes, qint64(1));
     }
 
+    void ordersSameKindEntriesNaturally()
+    {
+        const foldersnap::Snapshot before =
+            makeSnapshot("11111111-1111-4111-8111-111111111111", 10, {});
+        const foldersnap::Snapshot after =
+            makeSnapshot("22222222-2222-4222-8222-222222222222", 20,
+                         {file("file10.txt", 10, 1), file("file2.txt", 2, 1)});
+
+        const foldersnap::DiffResult result = foldersnap::DiffEngine::compare(before, after);
+
+        QCOMPARE(result.entries.size(), 2);
+        QCOMPARE(result.entries.at(0).path, QString("file2.txt"));
+        QCOMPARE(result.entries.at(1).path, QString("file10.txt"));
+    }
+
     void warningMakesMissingEntryUncertain()
     {
         const foldersnap::Snapshot before = makeSnapshot("11111111-1111-4111-8111-111111111111", 10,

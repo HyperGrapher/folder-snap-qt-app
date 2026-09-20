@@ -32,6 +32,11 @@ struct ComparisonJobResult
     int modifiedCount{0};
     int unchangedCount{0};
     int warningCount{0};
+    int beforeWarningCount{0};
+    int afterWarningCount{0};
+    int uncertainCount{0};
+    int scopeDifferenceCount{0};
+    bool ignoreRulesDiffer{false};
     int comparedCount{0};
     qint64 netSize{0};
     QString error;
@@ -100,12 +105,18 @@ class AppState : public QObject
     Q_PROPERTY(int modifiedCount READ modifiedCount NOTIFY comparisonChanged)
     Q_PROPERTY(int unchangedCount READ unchangedCount NOTIFY comparisonChanged)
     Q_PROPERTY(int warningCount READ warningCount NOTIFY comparisonChanged)
+    Q_PROPERTY(int beforeWarningCount READ beforeWarningCount NOTIFY comparisonChanged)
+    Q_PROPERTY(int afterWarningCount READ afterWarningCount NOTIFY comparisonChanged)
+    Q_PROPERTY(int uncertainCount READ uncertainCount NOTIFY comparisonChanged)
+    Q_PROPERTY(int scopeDifferenceCount READ scopeDifferenceCount NOTIFY comparisonChanged)
+    Q_PROPERTY(bool ignoreRulesDiffer READ ignoreRulesDiffer NOTIFY comparisonChanged)
     Q_PROPERTY(int comparedCount READ comparedCount NOTIFY comparisonChanged)
     Q_PROPERTY(QString netSize READ netSize NOTIFY comparisonChanged)
     Q_PROPERTY(int activeRootCount READ activeRootCount NOTIFY rootsChanged)
     Q_PROPERTY(int totalSnapshotCount READ totalSnapshotCount NOTIFY rootsChanged)
     Q_PROPERTY(qint64 totalFileCount READ totalFileCount NOTIFY rootsChanged)
     Q_PROPERTY(QString sheet READ sheet WRITE setSheet NOTIFY sheetChanged)
+    Q_PROPERTY(bool comparisonWarningReview READ comparisonWarningReview NOTIFY sheetChanged)
     Q_PROPERTY(QString toast READ toast WRITE setToast NOTIFY toastChanged)
     Q_PROPERTY(QString detailId READ detailId WRITE setDetailId NOTIFY detailIdChanged)
     Q_PROPERTY(QString ignoreRules READ ignoreRules NOTIFY ignoreRulesChanged)
@@ -266,6 +277,26 @@ class AppState : public QObject
     {
         return m_warningCount;
     }
+    [[nodiscard]] int beforeWarningCount() const
+    {
+        return m_beforeWarningCount;
+    }
+    [[nodiscard]] int afterWarningCount() const
+    {
+        return m_afterWarningCount;
+    }
+    [[nodiscard]] int uncertainCount() const
+    {
+        return m_uncertainCount;
+    }
+    [[nodiscard]] int scopeDifferenceCount() const
+    {
+        return m_scopeDifferenceCount;
+    }
+    [[nodiscard]] bool ignoreRulesDiffer() const
+    {
+        return m_ignoreRulesDiffer;
+    }
     [[nodiscard]] int comparedCount() const
     {
         return m_comparedCount;
@@ -286,6 +317,10 @@ class AppState : public QObject
     [[nodiscard]] QString sheet() const
     {
         return m_sheet;
+    }
+    [[nodiscard]] bool comparisonWarningReview() const
+    {
+        return m_comparisonWarningReview;
     }
     [[nodiscard]] QString toast() const
     {
@@ -399,6 +434,7 @@ class AppState : public QObject
     Q_INVOKABLE void startScheduledSnapshot(const QString &rootId);
     Q_INVOKABLE void snoozeScheduledSnapshot(const QString &rootId, int minutes);
     Q_INVOKABLE QVariantList snapshotWarnings(const QString &snapshotId) const;
+    Q_INVOKABLE QVariantList comparisonWarnings() const;
     Q_INVOKABLE void toggleExpanded(const QString &path);
     Q_INVOKABLE void takeSnapshot();
     Q_INVOKABLE void cancelScan();
@@ -408,6 +444,7 @@ class AppState : public QObject
     Q_INVOKABLE void cancelExport();
     Q_INVOKABLE void openSheet(const QString &kind);
     Q_INVOKABLE void openCurrentFolder();
+    Q_INVOKABLE void openDataFolder();
     Q_INVOKABLE void addFolder(const QUrl &folderUrl);
     Q_INVOKABLE void updateRoot(const QString &name, const QString &schedule, int retention,
                                 const QString &ignoreRules, bool archived);
@@ -460,7 +497,7 @@ class AppState : public QObject
     void evaluateSchedules();
     void finishComparison();
     void invalidateComparison();
-    void saveConfiguration();
+    [[nodiscard]] bool saveConfiguration();
     void setScanError(const QString &error);
     void setScanning(bool scanning);
     void setComparing(bool comparing);
@@ -506,12 +543,18 @@ class AppState : public QObject
     int m_modifiedCount{0};
     int m_unchangedCount{0};
     int m_warningCount{0};
+    int m_beforeWarningCount{0};
+    int m_afterWarningCount{0};
+    int m_uncertainCount{0};
+    int m_scopeDifferenceCount{0};
+    bool m_ignoreRulesDiffer{false};
     int m_comparedCount{0};
     qint64 m_netSize{0};
     int m_activeRootCount{0};
     int m_totalSnapshotCount{0};
     qint64 m_totalFileCount{0};
     QString m_sheet;
+    bool m_comparisonWarningReview{false};
     QString m_toast;
     QString m_detailId;
     QString m_ignoreRules;

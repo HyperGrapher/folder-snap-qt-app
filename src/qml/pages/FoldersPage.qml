@@ -5,7 +5,7 @@ import FolderSnap
 
 ColumnLayout {
     id: page
-    required property UiPreviewState appState
+    required property AppState appState
     required property MotionPolicy motion
     spacing: 22
     RowLayout {
@@ -119,7 +119,7 @@ ColumnLayout {
                         spacing: 11
                         RowLayout {
                             LabelText {
-                                text: page.appState.currentRoot.name
+                                text: page.appState.currentRoot.name || ""
                                 font.pixelSize: 24
                                 font.weight: Font.DemiBold
                                 Layout.fillWidth: true
@@ -134,7 +134,7 @@ ColumnLayout {
                             }
                         }
                         LabelText {
-                            text: page.appState.currentRoot.path
+                            text: page.appState.currentRoot.path || ""
                             font.pixelSize: 11
                             color: Theme.muted
                             Layout.fillWidth: true
@@ -142,11 +142,11 @@ ColumnLayout {
                         }
                         RowLayout {
                             Badge {
-                                text: page.appState.currentRoot.archived ? "Archived" : "Watching"
-                                tone: page.appState.currentRoot.archived ? Theme.muted : Theme.accent
+                                text: page.appState.currentRoot.archived === true ? "Archived" : "Watching"
+                                tone: page.appState.currentRoot.archived === true ? Theme.muted : Theme.accent
                             }
                             LabelText {
-                                text: page.appState.currentRoot.schedule
+                                text: page.appState.currentRoot.schedule || "Manual only"
                                 color: Theme.secondary
                                 font.pixelSize: 11
                                 Layout.fillWidth: true
@@ -191,12 +191,21 @@ ColumnLayout {
                         onClicked: page.appState.selectedSection = AppState.Compare
                     }
                 }
-                Repeater {
+                ListView {
+                    id: historyList
+                    objectName: "historyList"
+                    Layout.fillWidth: true
+                    implicitHeight: Math.min(contentHeight, 360)
+                    height: implicitHeight
+                    clip: true
+                    spacing: 7
+                    reuseItems: true
                     model: page.appState.currentRoot.snapshots === 0 ? [] : page.appState.snapshots
-                    Panel {
+                    ScrollBar.vertical: ScrollBar {}
+                    delegate: Panel {
                         required property var modelData
-                        Layout.fillWidth: true
-                        implicitHeight: 72
+                        width: historyList.width
+                        height: 72
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: 12
@@ -294,6 +303,7 @@ ColumnLayout {
                         primary: false
                         quiet: true
                         danger: true
+                        enabled: !page.appState.scanning
                         implicitHeight: 30
                         onClicked: page.appState.openSheet("clear")
                     }

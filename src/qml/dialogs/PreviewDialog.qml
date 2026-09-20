@@ -6,7 +6,7 @@ import FolderSnap
 
 Dialog {
     id: dialog
-    required property UiPreviewState appState
+    required property AppState appState
     required property MotionPolicy motion
     readonly property string kind: appState.sheet
     readonly property bool isExport: kind === "export" || kind === "exportComparison"
@@ -26,6 +26,7 @@ Dialog {
     }
     FolderDialog {
         id: folderChooser
+        objectName: "nativeFolderPicker"
         title: "Choose a folder to watch"
         onAccepted: {
             dialog.appState.sheet = "";
@@ -120,7 +121,7 @@ Dialog {
         spacing: 16
         BodyText {
             Layout.fillWidth: true
-            text: dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Save a private, offline report. Snapshot data stays on this computer." : dialog.kind === "cleanup" ? "Review Added entries, then move unchanged live items to the Windows Recycle Bin." : dialog.kind === "removeFolder" ? "This removes the watched-folder registration and all of its saved snapshot history. The real folder and its files are untouched." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain." : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
+            text: dialog.kind === "folder" ? "Small preferences that make this folder work for you." : dialog.isExport ? "Save a private, offline report. Snapshot data stays on this computer." : dialog.kind === "cleanup" ? "Review Added entries, then move unchanged live items to the Windows Recycle Bin." : dialog.kind === "removeFolder" ? "This removes the watched-folder registration and all of its saved snapshot history. The real folder and its files are untouched." : dialog.isDestructive ? "This removes saved metadata from FolderSnap. Your watched files are unaffected." : dialog.kind === "warnings" ? (dialog.appState.comparisonWarningReview ? "These signals come from both snapshots in the comparison. Changes beneath affected paths may be uncertain." : "The snapshot is saved, but these paths could not be read. Changes beneath them may be uncertain.") : dialog.appState.snapshot(dialog.appState.detailId).date + " · " + dialog.appState.currentRoot.name
             font.pixelSize: 12
         }
         ColumnLayout {
@@ -139,7 +140,7 @@ Dialog {
                 Layout.fillWidth: true
                 leftPadding: 12
                 placeholderText: "e.g. Weekend projects"
-                text: dialog.kind === "folder" ? dialog.appState.currentRoot.name : ""
+                text: dialog.kind === "folder" ? (dialog.appState.currentRoot.name || "") : ""
             }
             LabelText {
                 text: "REGISTERED FOLDER"
@@ -153,7 +154,7 @@ Dialog {
                     Layout.fillWidth: true
                     leftPadding: 12
                     readOnly: true
-                    text: dialog.appState.currentRoot.path
+                    text: dialog.appState.currentRoot.path || ""
                 }
             }
             RowLayout {
@@ -167,8 +168,14 @@ Dialog {
                     id: scheduleInput
                     objectName: "folderScheduleInput"
                     implicitWidth: 200
-                    model: ["Manual only", "Every 1 hour", "Every 3 hours", "Every 6 hours", "Every 12 hours", "Daily at 09:00", "Weekly · Monday 09:00", "Monthly · day 1, 09:00"]
-                    currentIndex: Math.max(0, model.indexOf(dialog.appState.currentRoot.schedule))
+                    model: {
+                        const options = ["Manual only", "Every 1 hour", "Every 3 hours", "Every 6 hours", "Every 12 hours", "Daily at 09:00", "Weekly · Monday 09:00", "Monthly · day 1, 09:00"];
+                        const current = dialog.appState.currentRoot.schedule || "Manual only";
+                        if (options.indexOf(current) < 0)
+                            options.push(current);
+                        return options;
+                    }
+                    currentIndex: Math.max(0, model.indexOf(dialog.appState.currentRoot.schedule || "Manual only"))
                 }
             }
             RowLayout {
@@ -218,7 +225,7 @@ Dialog {
                 Layout.fillWidth: true
                 title: "Archive this folder"
                 description: "Pause future snapshots and keep its history."
-                checked: dialog.appState.currentRoot.archived
+                checked: dialog.appState.currentRoot.archived === true
                 animationsEnabled: dialog.motion.transitionsEnabled
             }
         }
@@ -327,11 +334,13 @@ Dialog {
             visible: dialog.kind === "warnings"
             Layout.fillWidth: true
             spacing: 10
-            property var warningItems: dialog.appState.snapshotWarnings(dialog.appState.detailId)
+            property var warningItems: dialog.appState.comparisonWarningReview ? dialog.appState.comparisonWarnings() : dialog.appState.snapshotWarnings(dialog.appState.detailId)
             LabelText {
                 visible: warningSection.warningItems.length === 0
                 Layout.fillWidth: true
                 text: {
+                    if (dialog.appState.comparisonWarningReview)
+                        return warningSection.warningItems.length === 0 ? "Comparison warning details are unavailable." : "";
                     var snapshot = dialog.appState.snapshot(dialog.appState.detailId);
                     if (snapshot.warningCount > 0 && snapshot.payloadAvailable !== true)
                         return "Warning details are unavailable because this snapshot payload is missing.";
@@ -362,7 +371,7 @@ Dialog {
                             LabelText {
                                 id: warningPath
                                 Layout.fillWidth: true
-                                text: modelData.path
+                                text: (modelData.source ? modelData.source + " · " : "") + modelData.path
                                 font.pixelSize: 11
                                 color: Theme.warning
                             }

@@ -21,6 +21,7 @@
 
 #include "domain/DomainError.h"
 #include "ignore/IgnoreMatcher.h"
+#include "platform/windows/NativeFileMetadata.h"
 
 namespace foldersnap
 {
@@ -85,7 +86,8 @@ EntryType entryType(const QFileInfo &info, quint32 attributes)
 quint32 fileAttributes(const QFileInfo &info)
 {
 #ifdef Q_OS_WIN
-    const DWORD attributes = GetFileAttributesW(reinterpret_cast<LPCWSTR>(info.filePath().utf16()));
+    const QString nativePath = extendedNativePath(info.filePath());
+    const DWORD attributes = GetFileAttributesW(reinterpret_cast<LPCWSTR>(nativePath.utf16()));
     return attributes == INVALID_FILE_ATTRIBUTES ? 0U : static_cast<quint32>(attributes);
 #else
     Q_UNUSED(info);
@@ -94,11 +96,12 @@ quint32 fileAttributes(const QFileInfo &info)
 }
 
 bool appendEntry(QList<SnapshotEntry> &entries, const QFileInfo &info, const QString &relativePath,
-                 EntryType type, quint32 attributes)
+                 const QString &displayPath, EntryType type, quint32 attributes,
+                 const std::optional<NativeFileMetadata> &metadata)
 {
     SnapshotEntry entry;
     entry.path = relativePath;
-    entry.displayPath = relativePath;
+    entry.displayPath = displayPath;
     entry.type = type;
     entry.attributes = attributes;
     if (type == EntryType::File)
@@ -113,8 +116,16 @@ bool appendEntry(QList<SnapshotEntry> &entries, const QFileInfo &info, const QSt
     {
         entry.linkTarget = info.symLinkTarget();
     }
-    entry.modifiedNs = timestampNanoseconds(info.lastModified());
-    entry.createdNs = timestampNanoseconds(info.birthTime());
+    if (metadata)
+    {
+        entry.modifiedNs = metadata->modifiedNs;
+        entry.createdNs = metadata->createdNs;
+    }
+    else
+    {
+        entry.modifiedNs = timestampNanoseconds(info.lastModified());
+        entry.createdNs = timestampNanoseconds(info.birthTime());
+    }
     entries.append(std::move(entry));
     return true;
 }
@@ -145,6 +156,11 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
         if (!rootInfo.isReadable())
         {
             result.error = "The watched folder cannot be read.";
+            return result;
+        }
+        if (hasReparsePointInPath(request.root.displayPath))
+        {
+            result.error = "The watched folder or one of its parents is a reparse point.";
             return result;
         }
 
@@ -256,22 +272,21 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
                     }
                     else
                     {
-                        const QFileInfoList children = currentDirectory.entryInfoList(
-                            QDir::NoDotAndDotDot | QDir::AllEntries | QDir::Hidden | QDir::System,
-                            QDir::Name);
-                        for (qsizetype batchStart = 0; batchStart < children.size();
-                             batchStart += kEntryBatchSize)
-                        {
-                            checkCancelled(cancelled);
-                            const qsizetype batchEnd =
-                                std::min(children.size(), batchStart + kEntryBatchSize);
-                            for (qsizetype index = batchStart; index < batchEnd; ++index)
+                        qsizetype batchCount = 0;
+                        const auto enumerationError = enumerateDirectoryEntries(
+                            directory.absolutePath,
+                            [&](const QString &entryPath)
                             {
-                                const QFileInfo &info = children.at(index);
-                                const QString relativePath =
-                                    normalizeRelativePath(QDir(request.root.displayPath)
-                                                              .relativeFilePath(info.filePath()));
-                                const quint32 attributes = fileAttributes(info);
+                                checkCancelled(cancelled);
+                                const QFileInfo info(entryPath);
+                                const QString displayPath = normalizeRelativeDisplayPath(
+                                    QDir(request.root.displayPath)
+                                        .relativeFilePath(info.filePath()));
+                                const QString relativePath = displayPath.toLower();
+                                const std::optional<NativeFileMetadata> metadata =
+                                    readNativeFileMetadata(info.filePath());
+                                const quint32 attributes =
+                                    metadata ? metadata->attributes : fileAttributes(info);
                                 const EntryType type = entryType(info, attributes);
                                 const bool isDirectory = type == EntryType::Directory;
                                 const IgnoreMatch match =
@@ -283,22 +298,56 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
                                         discoveredDirectories.append(
                                             {info.filePath(), relativePath});
                                     }
-                                    continue;
                                 }
-                                if (!appendEntry(directoryEntries, info, relativePath, type,
-                                                 attributes))
+                                else if (!appendEntry(directoryEntries, info, relativePath,
+                                                      displayPath, type, attributes, metadata))
                                 {
                                     addWarning(directoryWarnings, relativePath,
                                                WarningOperation::Stat, WarningCategory::Io,
                                                "The file size could not be read.");
-                                    continue;
                                 }
-                                if (isDirectory)
+                                else
                                 {
-                                    discoveredDirectories.append({info.filePath(), relativePath});
+                                    if (isDirectory)
+                                    {
+                                        discoveredDirectories.append(
+                                            {info.filePath(), relativePath});
+                                    }
+                                    ++processedEntries;
                                 }
-                                ++processedEntries;
+                                ++batchCount;
+                                if (batchCount == kEntryBatchSize)
+                                {
+                                    reportProgress();
+                                    batchCount = 0;
+                                }
+                            });
+                        if (enumerationError)
+                        {
+                            const QString message =
+                                *enumerationError == DirectoryEnumerationError::NotFound
+                                    ? "The folder no longer exists."
+                                : *enumerationError == DirectoryEnumerationError::AccessDenied
+                                    ? "The folder could not be read."
+                                    : "The folder could not be enumerated.";
+                            if (directory.relativePath.isEmpty())
+                            {
+                                directoryFailure = message;
                             }
+                            else
+                            {
+                                const WarningCategory category =
+                                    *enumerationError == DirectoryEnumerationError::NotFound
+                                        ? WarningCategory::NotFound
+                                    : *enumerationError == DirectoryEnumerationError::AccessDenied
+                                        ? WarningCategory::AccessDenied
+                                        : WarningCategory::Io;
+                                addWarning(directoryWarnings, directory.relativePath,
+                                           WarningOperation::Enumerate, category, message);
+                            }
+                        }
+                        if (batchCount != 0)
+                        {
                             reportProgress();
                         }
                     }
@@ -342,13 +391,22 @@ ScanResult MetadataScanner::scan(const ScanRequest &request, const ProgressCallb
             }
         };
 
-        std::vector<std::thread> workers;
+        std::vector<std::jthread> workers;
         workers.reserve(static_cast<size_t>(request.directoryWorkerCount));
-        for (int workerIndex = 0; workerIndex < request.directoryWorkerCount; ++workerIndex)
+        try
         {
-            workers.emplace_back(worker);
+            for (int workerIndex = 0; workerIndex < request.directoryWorkerCount; ++workerIndex)
+            {
+                workers.emplace_back(worker);
+            }
         }
-        for (std::thread &workerThread : workers)
+        catch (...)
+        {
+            wasCancelled = true;
+            shared.available.notify_all();
+            throw;
+        }
+        for (std::jthread &workerThread : workers)
         {
             workerThread.join();
         }

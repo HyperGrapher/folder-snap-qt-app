@@ -194,6 +194,35 @@ class StorageTest final : public QObject
             foldersnap::ErrorCode::MissingPayload);
     }
 
+    void snapshotSaveCancellationStopsCompressionAndLeavesNoPayload()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        auto source = fixtureSnapshot();
+        for (int index = 0; index < 10000; ++index)
+        {
+            source.header.scanWarnings.append(
+                {QString("generated/%1").arg(index, 6, 10, QChar('0')),
+                 foldersnap::WarningOperation::Stat, foldersnap::WarningCategory::Io,
+                 QString("generated warning %1").arg(index)});
+        }
+
+        int checkpoints = 0;
+        try
+        {
+            (void)foldersnap::SnapshotStore(paths).saveSnapshot(source, [&checkpoints]
+                                                                { return ++checkpoints >= 4; });
+            QFAIL("A cancelled snapshot save was accepted.");
+        }
+        catch (const foldersnap::DomainError &error)
+        {
+            QCOMPARE(error.code(), foldersnap::ErrorCode::Cancelled);
+        }
+        QVERIFY(checkpoints >= 4);
+        QVERIFY(!foldersnap::SnapshotStore(paths).hasPayload(source.header.snapshotId));
+    }
+
     void snapshotDecodeLimitAndTruncationAreRejected()
     {
         QTemporaryDir temporaryDirectory;
@@ -393,6 +422,30 @@ class StorageTest final : public QObject
             foldersnap::ConfigurationStore(paths).loadConfiguration().value;
         QVERIFY(!loadedConfiguration.roots.first().lastSnapshotUtc);
         QVERIFY(loadedConfiguration.roots.first().lastScanError.isEmpty());
+    }
+
+    void clearRootHistoryWithoutRecordsStillResetsRootStatus()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
+        const auto source = fixtureSnapshot();
+        foldersnap::WatchedRoot root;
+        root.rootId = source.header.rootId;
+        root.displayName = source.header.displayTitle;
+        root.path = source.header.rootPathAtCapture;
+        root.normalizedPath = foldersnap::normalizeRootPath(root.path).identityPath;
+        root.lastSnapshotUtc = source.header.completedAtUtc;
+        root.lastScanError = "stale warning";
+        foldersnap::Configuration configuration;
+        configuration.roots.append(root);
+        foldersnap::ConfigurationStore(paths).saveConfiguration(configuration);
+
+        foldersnap::HistoryStore(paths).clearRootHistory(root.rootId);
+
+        const auto persisted = foldersnap::ConfigurationStore(paths).loadConfiguration().value;
+        QVERIFY(!persisted.roots.first().lastSnapshotUtc);
+        QVERIFY(persisted.roots.first().lastScanError.isEmpty());
     }
 
     void removeWatchedRootDeletesOnlyItsConfigurationAndHistory()

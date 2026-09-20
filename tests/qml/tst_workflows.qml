@@ -10,7 +10,7 @@ TestCase {
     visible: true
     when: windowShown
 
-    UiPreviewState {
+    AppState {
         id: state
     }
     MotionPolicy {
@@ -52,6 +52,10 @@ TestCase {
         mouseClick(folderSnapshot);
         tryCompare(state, "scanning", false, 10000);
         tryVerify(() => state.snapshots.length === 2, 10000);
+        const historyList = findChild(host, "historyList");
+        verify(historyList !== null);
+        verify(historyList.reuseItems);
+        compare(historyList.count, 2);
 
         host.selectPage(AppState.Compare);
         tryCompare(host, "isTransitioning", false, 1000);

@@ -3,7 +3,7 @@ import FolderSnap
 
 Item {
     id: host
-    required property UiPreviewState appState
+    required property AppState appState
     required property MotionPolicy motion
     readonly property int currentIndex: appState.selectedSection
     property bool isTransitioning: false

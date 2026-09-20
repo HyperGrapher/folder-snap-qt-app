@@ -49,6 +49,7 @@ add_library(folder_snap_core STATIC
     src/storage/HistoryStore.h src/storage/HistoryStore.cpp
     src/scanner/MetadataScanner.h src/scanner/MetadataScanner.cpp
     src/schedule/ScheduleCalculator.h src/schedule/ScheduleCalculator.cpp
+    src/platform/windows/NativeFileMetadata.h src/platform/windows/NativeFileMetadata.cpp
 )
 target_include_directories(folder_snap_core PUBLIC src)
 target_link_libraries(folder_snap_core PUBLIC Qt6::Core ZLIB::ZLIB)
@@ -84,7 +85,6 @@ set(folder_snap_qml_files
     src/qml/controls/Sparkline.qml
     src/qml/controls/SnapshotArtwork.qml
     src/qml/controls/FolderCard.qml
-    src/qml/preview/UiPreviewState.qml
     src/qml/dialogs/PreviewDialog.qml
     src/qml/effects/AmbientBackground.qml
 )
@@ -108,6 +108,8 @@ qt_add_qml_module(
         src/AppState.h src/AppState.cpp
         src/application/ScanCoordinator.h src/application/ScanCoordinator.cpp
         src/application/ExportCoordinator.h src/application/ExportCoordinator.cpp
+        src/platform/windows/WindowsStartupController.h
+        src/platform/windows/WindowsStartupController.cpp
 )
 target_include_directories(folder_snap_ui PUBLIC src)
 target_link_libraries(folder_snap_ui PUBLIC folder_snap_core Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent)

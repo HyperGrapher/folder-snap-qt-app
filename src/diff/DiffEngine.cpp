@@ -2,9 +2,11 @@
 
 #include <algorithm>
 
+#include <QSet>
+
 #include "domain/DomainError.h"
+#include "diff/ComparisonTree.h"
 #include "ignore/IgnoreMatcher.h"
-#include "paths/WindowsPaths.h"
 
 namespace foldersnap
 {
@@ -47,21 +49,54 @@ bool sameMetadata(const SnapshotEntry &left, const SnapshotEntry &right)
     return false;
 }
 
-bool hasWarningAtOrBelow(const QList<ScanWarning> &warnings, const QString &path)
+struct WarningIndex
 {
+    QSet<QString> paths;
+    bool appliesToAll{false};
+};
+
+WarningIndex buildWarningIndex(const QList<ScanWarning> &warnings)
+{
+    WarningIndex index;
     for (const ScanWarning &warning : warnings)
     {
-        if (warning.path.isEmpty() || isAtOrBelow(path, warning.path))
+        if (warning.path.isEmpty())
+        {
+            index.appliesToAll = true;
+        }
+        else
+        {
+            index.paths.insert(warning.path);
+        }
+    }
+    return index;
+}
+
+bool hasWarningAtOrBelow(const WarningIndex &index, const QString &path)
+{
+    if (index.appliesToAll)
+    {
+        return true;
+    }
+    QString current = path;
+    while (!current.isEmpty())
+    {
+        if (index.paths.contains(current))
         {
             return true;
         }
+        const qsizetype separator = current.lastIndexOf('/');
+        if (separator < 0)
+        {
+            break;
+        }
+        current.truncate(separator);
     }
     return false;
 }
 
-bool isExcluded(const IgnoreConfig &ignoreConfig, const SnapshotEntry &entry)
+bool isExcluded(const IgnoreMatcher &matcher, const SnapshotEntry &entry)
 {
-    const IgnoreMatcher matcher(ignoreConfig.rules);
     return !matcher.testPath(entry.path, entry.type == EntryType::Directory).included;
 }
 
@@ -70,14 +105,14 @@ qint64 fileBytes(const std::optional<SnapshotEntry> &entry)
     return entry && entry->type == EntryType::File ? entry->size : 0;
 }
 
-ChangeKind classifyMissing(const SnapshotEntry &present, const SnapshotHeader &missingHeader,
-                           bool presentInAfter)
+ChangeKind classifyMissing(const SnapshotEntry &present, const IgnoreMatcher &missingMatcher,
+                           const WarningIndex &warningIndex, bool presentInAfter)
 {
-    if (hasWarningAtOrBelow(missingHeader.scanWarnings, present.path))
+    if (hasWarningAtOrBelow(warningIndex, present.path))
     {
         return ChangeKind::Uncertain;
     }
-    if (isExcluded(missingHeader.ignoreConfig, present))
+    if (isExcluded(missingMatcher, present))
     {
         return ChangeKind::ScopeDifference;
     }
@@ -124,6 +159,10 @@ DiffResult DiffEngine::compare(const Snapshot &first, const Snapshot &second,
         {
             std::swap(before, after);
         }
+        const IgnoreMatcher beforeMatcher(before->header.ignoreConfig.rules);
+        const IgnoreMatcher afterMatcher(after->header.ignoreConfig.rules);
+        const WarningIndex beforeWarnings = buildWarningIndex(before->header.scanWarnings);
+        const WarningIndex afterWarnings = buildWarningIndex(after->header.scanWarnings);
 
         QList<SnapshotEntry> sortedBeforeEntries;
         QList<SnapshotEntry> sortedAfterEntries;
@@ -181,12 +220,12 @@ DiffResult DiffEngine::compare(const Snapshot &first, const Snapshot &second,
             else if (hasBefore && beforeEntries->at(beforeIndex).path == path)
             {
                 entry.before = beforeEntries->at(beforeIndex++);
-                entry.kind = classifyMissing(*entry.before, after->header, false);
+                entry.kind = classifyMissing(*entry.before, afterMatcher, afterWarnings, false);
             }
             else
             {
                 entry.after = afterEntries->at(afterIndex++);
-                entry.kind = classifyMissing(*entry.after, before->header, true);
+                entry.kind = classifyMissing(*entry.after, beforeMatcher, beforeWarnings, true);
             }
 
             ++result.summary.comparedCount;
@@ -232,7 +271,7 @@ DiffResult DiffEngine::compare(const Snapshot &first, const Snapshot &second,
                       {
                           return leftOrder < rightOrder;
                       }
-                      return left.path.compare(right.path, Qt::CaseInsensitive) < 0;
+                      return naturalPathCompare(left.path, right.path) < 0;
                   });
     }
     catch (const DiffCancelled &)

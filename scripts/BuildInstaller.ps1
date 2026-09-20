@@ -1,6 +1,5 @@
 [CmdletBinding()]
 param(
-    [string]$BuildDirectory = '',
     [string]$QtRoot = '',
     [string]$CompilerRoot = '',
     [string]$VcpkgRoot = '',
@@ -122,12 +121,7 @@ function Find-ZlibRuntime {
 }
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$buildDirectoryValue = if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
-    Join-Path $projectRoot 'build'
-} else {
-    $BuildDirectory
-}
-$buildDirectory = Resolve-AbsolutePath $buildDirectoryValue
+$buildDirectory = Join-Path $projectRoot 'build'
 
 Write-Step 'Preparing installer build.'
 Write-Host "  Project: $projectRoot"

@@ -75,7 +75,7 @@ Exit: a clean FolderSnap-branded foundation configures, builds, launches, and pa
 
 ## Phase 1 — UI prototype with fake data
 
-- [x] Replace demo state with a clearly isolated `UiPreviewState`/fake model layer that cannot touch the filesystem.
+- [x] Expose the live `AppState` directly to QML; keep test fixtures isolated through their test data directory.
 - [x] Establish the final color, type, spacing, elevation, radius, focus, and motion tokens in `Theme.qml`.
 - [x] Refine the frameless title bar, resize hit testing, Windows 10 region corners, and Windows 11 native corner behavior.
 - [x] Display `foldersnap-icon` in the title/sidebar brand and application/taskbar surfaces.

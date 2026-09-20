@@ -9,7 +9,7 @@ TestCase {
     height: 700
     visible: true
     when: windowShown
-    UiPreviewState {
+    AppState {
         id: state
     }
     MotionPolicy {
