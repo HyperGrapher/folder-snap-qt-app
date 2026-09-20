@@ -303,25 +303,36 @@ class StorageTest final : public QObject
                  source.header.description);
     }
 
-    void retentionPrunesOnlyTheSavedRootsOldestPayload()
+    void retentionPreservesBaselineAndDescribedSnapshots()
     {
         QTemporaryDir temporaryDirectory;
         QVERIFY(temporaryDirectory.isValid());
         const auto paths = foldersnap::StoragePaths::fromDataDirectory(temporaryDirectory.path());
         const foldersnap::HistoryStore historyStore(paths);
-        for (int sequence = 1; sequence <= 11; ++sequence)
+        for (int sequence = 1; sequence <= 12; ++sequence)
         {
-            QCOMPARE(historyStore.commitSnapshot(snapshotAt(sequence), 10).record.snapshotId,
+            auto snapshot = snapshotAt(sequence);
+            snapshot.header.description.clear();
+            if (sequence == 2)
+            {
+                snapshot.header.description = "Keep this milestone";
+            }
+            QCOMPARE(historyStore.commitSnapshot(snapshot, 10).record.snapshotId,
                      snapshotId(sequence));
         }
+        auto latest = snapshotAt(13);
+        latest.header.description.clear();
+        QCOMPARE(historyStore.commitSnapshot(latest, 10).record.snapshotId, snapshotId(13));
         const QString otherRootId = "33333333-3333-4333-8333-333333333333";
         const auto other = snapshotAt(100, otherRootId);
         QCOMPARE(historyStore.commitSnapshot(other, 10).record.snapshotId, other.header.snapshotId);
 
         const auto primary = historyStore.loadHistoryForRoot(fixtureSnapshot().header.rootId);
-        QCOMPARE(primary.size(), 10);
-        QVERIFY(!foldersnap::SnapshotStore(paths).hasPayload(snapshotId(1)));
-        QVERIFY(!QFile::exists(foldersnap::SnapshotStore(paths).tombstonePath(snapshotId(1))));
+        QCOMPARE(primary.size(), 12);
+        QVERIFY(foldersnap::SnapshotStore(paths).hasPayload(snapshotId(1)));
+        QVERIFY(foldersnap::SnapshotStore(paths).hasPayload(snapshotId(2)));
+        QVERIFY(!foldersnap::SnapshotStore(paths).hasPayload(snapshotId(3)));
+        QVERIFY(foldersnap::SnapshotStore(paths).hasPayload(snapshotId(12)));
         QCOMPARE(historyStore.loadHistoryForRoot(otherRootId).size(), 1);
         QVERIFY(foldersnap::SnapshotStore(paths).hasPayload(other.header.snapshotId));
     }

@@ -487,6 +487,31 @@ ColumnLayout {
                         clip: true
                         model: page.appState.displayedChanges
                         reuseItems: true
+                        property real pendingContentY: -1
+                        function preserveToggle(path) {
+                            pendingContentY = contentY;
+                            page.appState.toggleExpanded(path);
+                            restoreContentTimer.restart();
+                        }
+                        function restoreContentPosition() {
+                            if (pendingContentY < 0)
+                                return;
+                            contentY = Math.max(0, Math.min(pendingContentY, Math.max(0, contentHeight - height)));
+                            pendingContentY = -1;
+                        }
+                        onContentHeightChanged: {
+                            if (pendingContentY >= 0)
+                                restoreContentTimer.restart();
+                        }
+                        onCountChanged: {
+                            if (pendingContentY >= 0)
+                                restoreContentTimer.restart();
+                        }
+                        Timer {
+                            id: restoreContentTimer
+                            interval: 0
+                            onTriggered: tree.restoreContentPosition()
+                        }
                         ScrollBar.vertical: ScrollBar {}
                         delegate: ItemDelegate {
                             id: treeRow
@@ -497,7 +522,7 @@ ColumnLayout {
                             Accessible.name: modelData.path + " " + modelData.status
                             onClicked: {
                                 if (modelData.folder)
-                                    page.appState.toggleExpanded(modelData.path);
+                                    tree.preserveToggle(modelData.path);
                                 else
                                     page.appState.toast = modelData.path + " · " + modelData.status;
                             }

@@ -35,20 +35,18 @@ TestCase {
         compare(state.visibleRoots.length, 1);
         compare(state.currentRoot.name, "QML test folder");
 
-        const overviewSnapshot = findChild(host, "overviewSnapshotButton");
-        verify(overviewSnapshot !== null);
-        compare(overviewSnapshot.Accessible.name, "Take snapshot");
-        overviewSnapshot.forceActiveFocus();
-        verify(overviewSnapshot.activeFocus);
-        keyClick(Qt.Key_Return);
-        tryCompare(state, "scanning", false, 10000);
-        tryVerify(() => state.snapshots.length === 1, 10000);
-
+        verify(findChild(host, "overviewSnapshotButton") === null);
         host.selectPage(AppState.Folders);
         tryCompare(host, "isTransitioning", false, 1000);
         const folderSnapshot = findChild(host, "folderSnapshotButton");
         verify(folderSnapshot !== null);
         compare(folderSnapshot.Accessible.name, "Take snapshot");
+        folderSnapshot.forceActiveFocus();
+        verify(folderSnapshot.activeFocus);
+        keyClick(Qt.Key_Return);
+        tryCompare(state, "scanning", false, 10000);
+        tryVerify(() => state.snapshots.length === 1, 10000);
+
         mouseClick(folderSnapshot);
         tryCompare(state, "scanning", false, 10000);
         tryVerify(() => state.snapshots.length === 2, 10000);

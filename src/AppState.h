@@ -441,6 +441,7 @@ class AppState : public QObject
     Q_INVOKABLE void startComparison();
     Q_INVOKABLE void exportSnapshot(const QString &format, const QUrl &destination);
     Q_INVOKABLE void exportComparison(const QString &format, const QUrl &destination);
+    Q_INVOKABLE QUrl defaultExportFile(const QString &format, bool comparison) const;
     Q_INVOKABLE void cancelExport();
     Q_INVOKABLE void openSheet(const QString &kind);
     Q_INVOKABLE void openCurrentFolder();

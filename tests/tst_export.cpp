@@ -97,6 +97,10 @@ class ExportTest final : public QObject
         QVERIFY(entries.first().toObject().value("createdAtUtc").isNull());
         QCOMPARE(entries.last().toObject().value("sizeBytes").toString(),
                  QString("9007199254740993"));
+        const QJsonObject folderSizes = dto.value("folderSizes").toObject();
+        QCOMPARE(
+            folderSizes.value(QString::fromUtf8("資料")).toObject().value("sizeBytes").toString(),
+            QString("9007199254740993"));
         QCOMPARE(foldersnap::encodeSnapshot(snapshot), before);
     }
 

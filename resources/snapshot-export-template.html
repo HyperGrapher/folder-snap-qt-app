@@ -90,7 +90,7 @@
   </main>
   <script>
     "use strict";
-    const emptyReport = {schemaVersion:1, reportType:"snapshot", header:{rootTitle:"Empty report"}, entries:[], warnings:[]};
+    const emptyReport = {schemaVersion:1, reportType:"snapshot", header:{rootTitle:"Empty report"}, entries:[], folderSizes:{}, warnings:[]};
     let report = emptyReport;
     try { report = JSON.parse(document.getElementById("foldersnap-data").textContent); } catch (_) {}
     const isComparison = report.reportType === "comparison";
@@ -158,9 +158,10 @@
     }
     function nodeStatus(node) { return isComparison && node.data ? node.data.change || "" : ""; }
     function sizeValue(node) {
-      if (isComparison && isFolder(node) && report.folderSizes && report.folderSizes[node.path]) {
+      if (isFolder(node) && report.folderSizes && report.folderSizes[node.path]) {
         const sizes = report.folderSizes[node.path];
-        return sizes.afterPresent ? sizes.afterBytes : sizes.beforeBytes;
+        if (isComparison) return sizes.afterPresent ? sizes.afterBytes : sizes.beforeBytes;
+        return sizes.sizeBytes || "0";
       }
       return metadata(node).sizeBytes || "0";
     }

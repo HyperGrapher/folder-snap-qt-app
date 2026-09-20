@@ -334,7 +334,7 @@ Dialog {
             visible: dialog.kind === "warnings"
             Layout.fillWidth: true
             spacing: 10
-            property var warningItems: dialog.appState.comparisonWarningReview ? dialog.appState.comparisonWarnings() : dialog.appState.snapshotWarnings(dialog.appState.detailId)
+            property var warningItems: dialog.kind === "warnings" ? (dialog.appState.comparisonWarningReview ? dialog.appState.comparisonWarnings() : dialog.appState.snapshotWarnings(dialog.appState.detailId)) : []
             LabelText {
                 visible: warningSection.warningItems.length === 0
                 Layout.fillWidth: true
@@ -440,6 +440,7 @@ Dialog {
                             onClicked: {
                                 dialog.pendingExportFormat = modelData.format;
                                 dialog.pendingComparisonExport = dialog.kind === "exportComparison";
+                                exportChooser.currentFile = dialog.appState.defaultExportFile(dialog.pendingExportFormat, dialog.pendingComparisonExport);
                                 exportChooser.open();
                             }
                         }

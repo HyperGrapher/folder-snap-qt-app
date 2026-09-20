@@ -15,6 +15,7 @@
 #include <QLocale>
 #include <QPromise>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <QSet>
 #include <QTimeZone>
 #include <QUrl>
@@ -115,6 +116,18 @@ QString exportPath(const QUrl &destination, foldersnap::ExportFormat format)
         path += format == foldersnap::ExportFormat::Html ? ".html" : ".csv";
     }
     return path;
+}
+
+QString exportNameComponent(QString value)
+{
+    value = value.trimmed();
+    if (value.isEmpty())
+    {
+        value = "folder";
+    }
+    value.replace(QRegularExpression(QStringLiteral("[<>:\"/\\\\|?*\\x00-\\x1F]")), "-");
+    value.remove(QRegularExpression(QStringLiteral("[. ]+$")));
+    return value.isEmpty() ? QStringLiteral("folder") : value;
 }
 
 QString triggerName(foldersnap::SnapshotTrigger trigger)
@@ -1689,6 +1702,29 @@ void AppState::exportComparison(const QString &format, const QUrl &destination)
         return;
     }
     startExport(m_beforeId, m_afterId, format, destination);
+}
+
+QUrl AppState::defaultExportFile(const QString &format, bool comparison) const
+{
+    const auto *root = currentConfigurationRoot();
+    const QString folderName = exportNameComponent(root ? root->displayName : QString{});
+    const QString exportType = comparison ? QStringLiteral("compare") : QStringLiteral("snapshot");
+    const QString timestamp =
+        QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    const QString suffix = format.compare(QStringLiteral("csv"), Qt::CaseInsensitive) == 0
+                               ? QStringLiteral(".csv")
+                               : QStringLiteral(".html");
+    const QString filename = folderName + '-' + exportType + '-' + timestamp + suffix;
+    QString directory = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (directory.isEmpty())
+    {
+        directory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    }
+    if (directory.isEmpty())
+    {
+        directory = QDir::homePath();
+    }
+    return QUrl::fromLocalFile(QDir(directory).filePath(filename));
 }
 
 void AppState::cancelExport()

@@ -98,14 +98,17 @@ TestCase {
         compare(motion.ambientEnabled, false);
     }
     function test_outgoingPageCannotAct() {
-        host.selectPage(0);
-        assertSettled(0);
-        const take = findChild(host, "overviewSnapshotButton");
-        take.forceActiveFocus();
         host.selectPage(1);
+        assertSettled(1);
+        const folderTake = findChild(host, "folderSnapshotButton");
+        verify(folderTake !== null);
+        const overviewTake = findChild(host, "overviewSnapshotButton");
+        verify(overviewTake === null);
+        folderTake.forceActiveFocus();
+        host.selectPage(2);
         keyClick(Qt.Key_Space);
         compare(state.scanning, false);
-        assertSettled(1);
+        assertSettled(2);
         keyClick(Qt.Key_Return);
         compare(state.scanning, false);
     }

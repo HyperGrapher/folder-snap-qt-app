@@ -266,7 +266,10 @@ class WindowTest final : public QObject
         QVERIFY(!m_state->reducedMotion());
         m_state->setSelectedSection(AppState::Section::Overview);
         QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
-        auto *take = m_window->findChild<QQuickItem *>("overviewSnapshotButton");
+        QVERIFY(!m_window->findChild<QQuickItem *>("overviewSnapshotButton"));
+        m_state->setSelectedSection(AppState::Section::Folders);
+        QTRY_VERIFY(!pageHost()->property("isTransitioning").toBool());
+        auto *take = m_window->findChild<QQuickItem *>("folderSnapshotButton");
         QVERIFY(take);
         take->forceActiveFocus(Qt::TabFocusReason);
         QTest::keyClick(m_window, Qt::Key_Return);

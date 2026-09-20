@@ -2,6 +2,7 @@
 
 #include <optional>
 
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
@@ -150,6 +151,48 @@ QString optionalModified(const std::optional<SnapshotEntry> &entry)
 {
     return entry ? timestampText(entry->modifiedNs) : QString{};
 }
+
+QString parentPath(const QString &path)
+{
+    const qsizetype separator = path.lastIndexOf('/');
+    return separator < 0 ? QString{} : path.left(separator);
+}
+
+QJsonObject snapshotFolderSizes(const Snapshot &snapshot,
+                                const ExportBuilder::CancellationCallback &cancelled)
+{
+    QHash<QString, qint64> sizes;
+    qsizetype entryIndex = 0;
+    for (const SnapshotEntry &entry : snapshot.entries)
+    {
+        if ((entryIndex++ % 256) == 0)
+        {
+            checkCancelled(cancelled);
+        }
+        if (entry.type == EntryType::Directory)
+        {
+            sizes.insert(entry.path, sizes.value(entry.path));
+            continue;
+        }
+        if (entry.type != EntryType::File)
+        {
+            continue;
+        }
+        QString parent = parentPath(entry.path);
+        while (!parent.isEmpty())
+        {
+            sizes[parent] += entry.size;
+            parent = parentPath(parent);
+        }
+    }
+
+    QJsonObject result;
+    for (auto iterator = sizes.cbegin(); iterator != sizes.cend(); ++iterator)
+    {
+        result[iterator.key()] = QJsonObject{{"sizeBytes", QString::number(iterator.value())}};
+    }
+    return result;
+}
 } // namespace
 
 QJsonObject ExportBuilder::snapshotDto(const Snapshot &snapshot,
@@ -188,10 +231,12 @@ QJsonObject ExportBuilder::snapshotDto(const Snapshot &snapshot,
                                 {"otherCount", QString::number(header.otherCount)},
                                 {"totalFileBytes", QString::number(header.totalFileBytes)},
                                 {"warningCount", header.scanWarnings.size()}};
+    const QJsonObject folderSizes = snapshotFolderSizes(snapshot, cancelled);
     return {{"schemaVersion", kExportSchemaVersion},
             {"reportType", "snapshot"},
             {"header", headerDto},
             {"entries", entries},
+            {"folderSizes", folderSizes},
             {"warnings", warnings}};
 }
 

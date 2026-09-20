@@ -48,14 +48,23 @@ ColumnLayout {
                     color: Theme.muted
                     Layout.margins: 8
                 }
-                Repeater {
+                ListView {
+                    id: folderList
+                    objectName: "watchedFoldersList"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    spacing: 5
+                    reuseItems: true
+                    boundsBehavior: Flickable.StopAtBounds
                     model: page.appState.visibleRoots
-                    Button {
+                    ScrollBar.vertical: ScrollBar {}
+                    delegate: Button {
                         id: folderItem
                         required property int index
                         required property var modelData
-                        Layout.fillWidth: true
-                        implicitHeight: 64
+                        width: folderList.width
+                        height: 54
                         hoverEnabled: true
                         Accessible.name: "Select " + modelData.name
                         onClicked: page.appState.chooseRoot(index)
@@ -65,7 +74,7 @@ ColumnLayout {
                             border.color: folderItem.visualFocus ? Theme.accent : page.appState.rootIndex === folderItem.index ? "#486053" : "transparent"
                         }
                         contentItem: ColumnLayout {
-                            spacing: 4
+                            spacing: 2
                             RowLayout {
                                 Glyph {
                                     name: folderItem.modelData.archived ? "archive" : "folder"
@@ -87,9 +96,6 @@ ColumnLayout {
                             }
                         }
                     }
-                }
-                Item {
-                    Layout.fillHeight: true
                 }
                 BodyText {
                     text: "Archiving pauses snapshots.\nYour history stays here."
@@ -113,53 +119,52 @@ ColumnLayout {
                 Panel {
                     Layout.fillWidth: true
                     implicitHeight: 165
-                    ColumnLayout {
+                    RowLayout {
                         anchors.fill: parent
                         anchors.margins: 20
-                        spacing: 11
-                        RowLayout {
+                        spacing: 16
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 11
                             LabelText {
                                 text: page.appState.currentRoot.name || ""
                                 font.pixelSize: 24
                                 font.weight: Font.DemiBold
                                 Layout.fillWidth: true
                             }
+                            LabelText {
+                                text: page.appState.currentRoot.path || ""
+                                font.pixelSize: 11
+                                color: Theme.muted
+                                Layout.fillWidth: true
+                                elide: Text.ElideMiddle
+                            }
+                            RowLayout {
+                                Badge {
+                                    text: page.appState.currentRoot.archived === true ? "Archived" : "Watching"
+                                    tone: page.appState.currentRoot.archived === true ? Theme.muted : Theme.accent
+                                }
+                                LabelText {
+                                    text: page.appState.currentRoot.schedule || "Manual only"
+                                    color: Theme.secondary
+                                    font.pixelSize: 11
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.alignment: Qt.AlignTop
+                            Layout.preferredWidth: 145
+                            spacing: 6
                             ActionButton {
                                 animationsEnabled: page.motion.transitionsEnabled
                                 text: "Preferences"
                                 primary: false
                                 glyph: "settings"
-                                implicitHeight: 32
-                                onClicked: page.appState.openSheet("folder")
-                            }
-                        }
-                        LabelText {
-                            text: page.appState.currentRoot.path || ""
-                            font.pixelSize: 11
-                            color: Theme.muted
-                            Layout.fillWidth: true
-                            elide: Text.ElideMiddle
-                        }
-                        RowLayout {
-                            Badge {
-                                text: page.appState.currentRoot.archived === true ? "Archived" : "Watching"
-                                tone: page.appState.currentRoot.archived === true ? Theme.muted : Theme.accent
-                            }
-                            LabelText {
-                                text: page.appState.currentRoot.schedule || "Manual only"
-                                color: Theme.secondary
-                                font.pixelSize: 11
                                 Layout.fillWidth: true
-                            }
-                        }
-                        RowLayout {
-                            ActionButton {
-                                animationsEnabled: page.motion.transitionsEnabled
-                                objectName: "folderSnapshotButton"
-                                text: page.appState.scanning ? "Capturing… " + page.appState.scanProgress + "%" : "Take snapshot"
-                                glyph: "snapshot"
-                                enabled: !page.appState.scanning && !page.appState.currentRoot.archived
-                                onClicked: page.appState.takeSnapshot()
+                                implicitHeight: 30
+                                onClicked: page.appState.openSheet("folder")
                             }
                             ActionButton {
                                 animationsEnabled: page.motion.transitionsEnabled
@@ -167,7 +172,19 @@ ColumnLayout {
                                 primary: false
                                 quiet: true
                                 glyph: "link"
+                                Layout.fillWidth: true
+                                implicitHeight: 30
                                 onClicked: page.appState.openCurrentFolder()
+                            }
+                            ActionButton {
+                                animationsEnabled: page.motion.transitionsEnabled
+                                objectName: "folderSnapshotButton"
+                                text: page.appState.scanning ? "Capturing… " + page.appState.scanProgress + "%" : "Take snapshot"
+                                glyph: "snapshot"
+                                Layout.fillWidth: true
+                                implicitHeight: 30
+                                enabled: !page.appState.scanning && !page.appState.currentRoot.archived
+                                onClicked: page.appState.takeSnapshot()
                             }
                         }
                     }

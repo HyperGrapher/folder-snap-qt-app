@@ -122,27 +122,6 @@ ScrollView {
                     color: "#bfd0c9"
                     Layout.fillWidth: true
                 }
-                Item {
-                    Layout.fillHeight: true
-                }
-                RowLayout {
-                    ActionButton {
-                        animationsEnabled: page.motion.transitionsEnabled
-                        objectName: "overviewSnapshotButton"
-                        text: page.appState.scanning ? "Capturing… " + page.appState.scanProgress + "%" : "Take snapshot"
-                        glyph: "snapshot"
-                        enabled: !page.appState.scanning && !page.appState.currentRoot.archived
-                        onClicked: page.appState.takeSnapshot()
-                    }
-                    ActionButton {
-                        animationsEnabled: page.motion.transitionsEnabled
-                        text: "Explore history"
-                        primary: false
-                        quiet: true
-                        glyph: "arrow"
-                        onClicked: page.appState.selectedSection = AppState.Folders
-                    }
-                }
             }
         }
         RowLayout {

@@ -162,12 +162,33 @@ SnapshotCommitResult HistoryStore::commitSnapshot(const Snapshot &snapshot, int 
 
         if (retention != 0)
         {
-            int retainedCount = 0;
+            QSet<QString> protectedIds;
+            for (auto iterator = records.crbegin(); iterator != records.crend(); ++iterator)
+            {
+                checkCancelled(cancelled);
+                if (iterator->rootId == record.rootId)
+                {
+                    protectedIds.insert(iterator->snapshotId);
+                    break;
+                }
+            }
+            for (const HistoryRecord &historyRecord : std::as_const(records))
+            {
+                checkCancelled(cancelled);
+                if (historyRecord.rootId == record.rootId && !historyRecord.description.isEmpty())
+                {
+                    protectedIds.insert(historyRecord.snapshotId);
+                }
+            }
+
+            int retainedUnprotectedCount = 0;
             auto iterator = records.begin();
             while (iterator != records.end())
             {
                 checkCancelled(cancelled);
-                if (iterator->rootId != record.rootId || ++retainedCount <= retention)
+                if (iterator->rootId != record.rootId ||
+                    protectedIds.contains(iterator->snapshotId) ||
+                    retainedUnprotectedCount++ < retention)
                 {
                     ++iterator;
                     continue;
