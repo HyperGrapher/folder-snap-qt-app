@@ -93,7 +93,6 @@ jobs:
           & $vcpkgCommand.Path install `
               '--triplet=x64-mingw-dynamic' `
               "--x-install-root=$installRoot" `
-              "--manifest-root=$env:GITHUB_WORKSPACE" `
               '--no-print-usage'
           if ($LASTEXITCODE -ne 0) {
               exit $LASTEXITCODE
