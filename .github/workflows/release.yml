@@ -1,0 +1,177 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish Windows installer
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_NAME -notmatch '^v(?<version>[0-9]+\.[0-9]+\.[0-9]+)$') {
+              throw "Release tags must use semantic version form v1.2.3 (got '$env:GITHUB_REF_NAME')."
+          }
+
+          "number=$($matches.version)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.1'
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          modules: qtshadertools
+          tools: tools_mingw1310
+          cache: true
+
+      - name: Locate Qt and MinGW toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $windeployqt = Get-Command windeployqt.exe -ErrorAction SilentlyContinue
+          if ($null -eq $windeployqt) {
+              throw 'windeployqt.exe was not added to PATH by install-qt-action.'
+          }
+
+          $compiler = Get-Command g++.exe -ErrorAction SilentlyContinue
+          if ($null -eq $compiler) {
+              throw 'g++.exe was not added to PATH by install-qt-action.'
+          }
+
+          $qtRoot = Split-Path -Parent (Split-Path -Parent $windeployqt.Path)
+          $compilerRoot = Split-Path -Parent (Split-Path -Parent $compiler.Path)
+
+          "FOLDERSNAP_QT_ROOT=$qtRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FOLDERSNAP_COMPILER_ROOT=$compilerRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "FOLDERSNAP_COMPILER=$($compiler.Path)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$($windeployqt.DirectoryName)" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "$($compiler.DirectoryName)" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Install vcpkg dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $vcpkgCommand = Get-Command vcpkg.exe -ErrorAction SilentlyContinue
+          if ($null -eq $vcpkgCommand -and -not [string]::IsNullOrWhiteSpace($env:VCPKG_INSTALLATION_ROOT)) {
+              $candidate = Join-Path $env:VCPKG_INSTALLATION_ROOT 'vcpkg.exe'
+              if (Test-Path -LiteralPath $candidate) {
+                  $vcpkgCommand = Get-Command $candidate
+              }
+          }
+
+          if ($null -eq $vcpkgCommand) {
+              throw 'vcpkg.exe was not found on the runner.'
+          }
+
+          $vcpkgRoot = Split-Path -Parent $vcpkgCommand.Path
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $installRoot = Join-Path $env:GITHUB_WORKSPACE 'build\vcpkg_installed'
+          New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+
+          & $vcpkgCommand.Path install `
+              '--triplet=x64-mingw-dynamic' `
+              "--x-install-root=$installRoot" `
+              "--manifest-root=$env:GITHUB_WORKSPACE" `
+              '--no-print-usage'
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $toolchain = Join-Path $env:VCPKG_ROOT 'scripts\buildsystems\vcpkg.cmake'
+          $installed = Join-Path $env:GITHUB_WORKSPACE 'build\vcpkg_installed'
+
+          cmake -S . -B build -G Ninja `
+              '-DCMAKE_BUILD_TYPE=Release' `
+              "-DCMAKE_PREFIX_PATH=$env:FOLDERSNAP_QT_ROOT" `
+              "-DCMAKE_CXX_COMPILER=$env:FOLDERSNAP_COMPILER" `
+              "-DCMAKE_TOOLCHAIN_FILE=$toolchain" `
+              "-DVCPKG_INSTALLED_DIR=$installed" `
+              '-DVCPKG_TARGET_TRIPLET=x64-mingw-dynamic' `
+              '-DFOLDERSNAP_INSTALL_DEPENDENCIES=OFF' `
+              '-DBUILD_TESTING=ON'
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+      - name: Build and test
+        shell: pwsh
+        run: |
+          cmake --build build --parallel 2
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+          ctest --test-dir build --output-on-failure
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress --yes
+
+      - name: Package installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ steps.version.outputs.number }}'
+          $innoRoot = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6'
+
+          & .\scripts\BuildInstaller.ps1 `
+              -Version $version `
+              -Configuration Release `
+              -Parallel 2 `
+              -QtRoot $env:FOLDERSNAP_QT_ROOT `
+              -CompilerRoot $env:FOLDERSNAP_COMPILER_ROOT `
+              -VcpkgRoot $env:VCPKG_ROOT `
+              -InnoSetupRoot $innoRoot `
+              -SkipBuild
+
+      - name: Create checksums
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.number }}'
+          $installer = Join-Path $env:GITHUB_WORKSPACE "build\installer\FolderSnap-Setup-$version.exe"
+          if (-not (Test-Path -LiteralPath $installer)) {
+              throw "Installer was not produced: $installer"
+          }
+
+          $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash *$([IO.Path]::GetFileName($installer))" | Out-File -FilePath "$installer.sha256" -Encoding ascii
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: FolderSnap ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            build/installer/FolderSnap-Setup-${{ steps.version.outputs.number }}.exe
+            build/installer/FolderSnap-Setup-${{ steps.version.outputs.number }}.exe.sha256
