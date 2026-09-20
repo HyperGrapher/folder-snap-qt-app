@@ -644,12 +644,22 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
                     continue;
                 }
 
-                const QFileInfoList remainingEntries =
-                    QDir(absolutePath)
-                        .entryInfoList(QDir::NoDotAndDotDot | QDir::AllEntries | QDir::Hidden |
-                                           QDir::System,
-                                       QDir::NoSort);
-                if (!remainingEntries.isEmpty())
+                bool hasRemainingEntries = false;
+                const auto enumerationError =
+                    enumerateDirectoryEntries(absolutePath, [&hasRemainingEntries](const QString &)
+                                              { hasRemainingEntries = true; });
+                if (enumerationError)
+                {
+                    item->status = *enumerationError == DirectoryEnumerationError::NotFound
+                                       ? CleanupStatus::AlreadyMissing
+                                       : CleanupStatus::AccessDeniedOrUnreadable;
+                    item->detail =
+                        *enumerationError == DirectoryEnumerationError::NotFound
+                            ? "The directory disappeared before it could be moved."
+                            : "The directory could not be enumerated before it was moved.";
+                    continue;
+                }
+                if (hasRemainingEntries)
                 {
                     item->status = CleanupStatus::Failed;
                     item->detail = "The directory still contains content, so it was kept in place.";

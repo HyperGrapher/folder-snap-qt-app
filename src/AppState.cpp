@@ -135,6 +135,19 @@ QString triggerName(foldersnap::SnapshotTrigger trigger)
     return trigger == foldersnap::SnapshotTrigger::Scheduled ? "Scheduled" : "Manual";
 }
 
+foldersnap::WatchedRoot *findConfigurationRoot(foldersnap::Configuration &configuration,
+                                               const QString &rootId)
+{
+    for (foldersnap::WatchedRoot &root : configuration.roots)
+    {
+        if (root.rootId == rootId)
+        {
+            return &root;
+        }
+    }
+    return nullptr;
+}
+
 QString warningOperationName(foldersnap::WarningOperation operation)
 {
     switch (operation)
@@ -1558,28 +1571,33 @@ void AppState::takeSnapshot()
 
 void AppState::startScheduledSnapshot(const QString &rootId)
 {
-    if (!m_pendingScheduledRoots.remove(rootId))
+    if (!m_pendingScheduledRoots.contains(rootId))
     {
         return;
     }
-    auto *root = configurationRoot(rootId);
+    const foldersnap::Configuration originalConfiguration = m_configuration;
+    foldersnap::Configuration updatedConfiguration = m_configuration;
+    auto *root = findConfigurationRoot(updatedConfiguration, rootId);
     if (!root || root->archived)
     {
+        m_pendingScheduledRoots.remove(rootId);
         m_pendingScheduledNextDue.remove(rootId);
         return;
     }
     const auto nextDue = m_pendingScheduledNextDue.find(rootId);
     if (nextDue != m_pendingScheduledNextDue.end())
     {
-        const foldersnap::Configuration originalConfiguration = m_configuration;
         root->schedule.nextDueAtUtc = nextDue.value();
-        m_pendingScheduledNextDue.erase(nextDue);
+        m_configuration = std::move(updatedConfiguration);
         if (!saveConfiguration())
         {
             m_configuration = originalConfiguration;
+            return;
         }
     }
-    requestSnapshot(*root, foldersnap::SnapshotTrigger::Scheduled);
+    m_pendingScheduledRoots.remove(rootId);
+    m_pendingScheduledNextDue.remove(rootId);
+    requestSnapshot(*configurationRoot(rootId), foldersnap::SnapshotTrigger::Scheduled);
 }
 
 void AppState::snoozeScheduledSnapshot(const QString &rootId, int minutes)
@@ -2253,11 +2271,13 @@ void AppState::refreshModels()
 void AppState::finishScan(const foldersnap::ScanJobResult &result)
 {
     bool configurationSaved = true;
-    if (auto *root = configurationRoot(result.rootId))
+    foldersnap::Configuration updatedConfiguration = m_configuration;
+    if (auto *root = findConfigurationRoot(updatedConfiguration, result.rootId))
     {
         const foldersnap::Configuration originalConfiguration = m_configuration;
         root->lastSnapshotUtc = result.commit.record.completedAtUtc;
         root->lastScanError.clear();
+        m_configuration = std::move(updatedConfiguration);
         configurationSaved = saveConfiguration();
         if (!configurationSaved)
         {
@@ -2287,10 +2307,12 @@ void AppState::finishScan(const foldersnap::ScanJobResult &result)
 
 void AppState::failScan(const QString &rootId, const QString &error)
 {
-    if (auto *root = configurationRoot(rootId))
+    foldersnap::Configuration updatedConfiguration = m_configuration;
+    if (auto *root = findConfigurationRoot(updatedConfiguration, rootId))
     {
         const foldersnap::Configuration originalConfiguration = m_configuration;
         root->lastScanError = error;
+        m_configuration = std::move(updatedConfiguration);
         if (!saveConfiguration())
         {
             m_configuration = originalConfiguration;
@@ -2317,6 +2339,7 @@ void AppState::evaluateSchedules()
     const QTimeZone timeZone = QTimeZone::systemTimeZone();
     const foldersnap::Configuration originalConfiguration = m_configuration;
     QStringList notificationRootIds;
+    QStringList scheduledRootIds;
     bool configurationChanged = false;
     for (foldersnap::WatchedRoot &root : m_configuration.roots)
     {
@@ -2355,7 +2378,7 @@ void AppState::evaluateSchedules()
                         root.schedule.nextDueAtUtc = decision.nextDueAtUtc;
                         configurationChanged = true;
                     }
-                    requestSnapshot(root, foldersnap::SnapshotTrigger::Scheduled);
+                    scheduledRootIds.append(root.rootId);
                 }
                 else if (!m_pendingScheduledRoots.contains(root.rootId))
                 {
@@ -2388,6 +2411,14 @@ void AppState::evaluateSchedules()
         if (!saveConfiguration())
         {
             m_configuration = originalConfiguration;
+            return;
+        }
+    }
+    for (const QString &rootId : scheduledRootIds)
+    {
+        if (const auto *root = configurationRoot(rootId); root && !root->archived)
+        {
+            requestSnapshot(*root, foldersnap::SnapshotTrigger::Scheduled);
         }
     }
     for (const QString &rootId : notificationRootIds)
@@ -2596,12 +2627,5 @@ const foldersnap::WatchedRoot *AppState::currentConfigurationRoot() const
 
 foldersnap::WatchedRoot *AppState::configurationRoot(const QString &rootId)
 {
-    for (foldersnap::WatchedRoot &root : m_configuration.roots)
-    {
-        if (root.rootId == rootId)
-        {
-            return &root;
-        }
-    }
-    return nullptr;
+    return findConfigurationRoot(m_configuration, rootId);
 }

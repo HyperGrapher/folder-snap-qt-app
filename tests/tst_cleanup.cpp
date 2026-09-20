@@ -520,15 +520,29 @@ class CleanupTest final : public QObject
         request.selectedPaths = {"folder"};
 
         const auto result = foldersnap::CleanupExecutor::execute(
-            request, [](const QString &) { return foldersnap::CleanupMoveResult{true}; });
+            request,
+            [&](const QString &path)
+            {
+                if (QFileInfo(path).fileName() == "known.txt")
+                {
+                    if (!QFile::remove(path))
+                    {
+                        return foldersnap::CleanupMoveResult{false, false, false,
+                                                             "The test file could not be removed."};
+                    }
+                    writeFile(temporaryDirectory.filePath("folder/untracked.txt"), "untracked");
+                }
+                return foldersnap::CleanupMoveResult{true};
+            });
 
         QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
         QCOMPARE(result.summary.movedCount, 1);
-        QCOMPARE(result.summary.failedCount, 1);
+        QCOMPARE(result.summary.blockedCount, 1);
         QCOMPARE(executionItemAt(result, "folder/known.txt")->status,
                  foldersnap::CleanupStatus::MovedToRecycleBin);
-        QCOMPARE(executionItemAt(result, "folder")->status, foldersnap::CleanupStatus::Failed);
-        QVERIFY(QFileInfo::exists(temporaryDirectory.filePath("folder/known.txt")));
+        QCOMPARE(executionItemAt(result, "folder")->status,
+                 foldersnap::CleanupStatus::ContainsUntrackedContent);
+        QVERIFY(QFileInfo::exists(temporaryDirectory.filePath("folder/untracked.txt")));
         QVERIFY(QDir(temporaryDirectory.filePath("folder")).exists());
     }
 
