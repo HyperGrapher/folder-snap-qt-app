@@ -13,19 +13,19 @@ set(
     CACHE BOOL "Install vcpkg manifest dependencies during configure" FORCE
 )
 
-project(FolderSnap VERSION 0.1.0 LANGUAGES CXX)
+project(FolderSnap VERSION 0.1.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(
-    Qt6 6.11 REQUIRED
+    Qt6 6.10 REQUIRED
     COMPONENTS Core Concurrent Network Quick QuickControls2 ShaderTools Widgets
 )
 find_package(ZLIB REQUIRED)
 
-qt_standard_project_setup(REQUIRES 6.11)
+qt_standard_project_setup(REQUIRES 6.10)
 include(CTest)
 
 add_library(folder_snap_core STATIC

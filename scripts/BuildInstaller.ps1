@@ -6,7 +6,7 @@ param(
     [string]$InnoSetupRoot = '',
     [string]$Triplet = 'x64-mingw-dynamic',
     [string]$Configuration = 'Release',
-    [string]$Version = '0.1.0',
+    [string]$Version = '0.1.1',
     [ValidateRange(1, 64)]
     [int]$Parallel = 2,
     [switch]$SkipBuild

@@ -72,7 +72,7 @@ computer. It targets 64-bit Windows.
 .\scripts\BuildInstaller.ps1
 ```
 
-The installer is written to `build/installer/FolderSnap-Setup-0.1.0.exe` and the
+The installer is written to `build/installer/FolderSnap-Setup-0.1.1.exe` and the
 expanded deployment folder is kept at `build/deploy/` for smoke testing. Override
 local tool locations with `-QtRoot`, `-CompilerRoot`, `-VcpkgRoot`, and
 `-InnoSetupRoot`; when omitted, Qt's `windeployqt`, MinGW `g++`, and `vcpkg` are
