@@ -590,6 +590,46 @@ class AppStateTest final : public QObject
         QTRY_COMPARE_WITH_TIMEOUT(state.snapshots().size(), 1, 5000);
     }
 
+    void doesNotStartQuietScheduleWhenSavingItsNextDueFails()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir watchedDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(watchedDirectory.isValid());
+        qputenv("FOLDERSNAP_DATA_DIR", dataDirectory.path().toUtf8());
+        const auto restoreEnvironment = qScopeGuard([] { qunsetenv("FOLDERSNAP_DATA_DIR"); });
+
+        const foldersnap::RootPath normalized =
+            foldersnap::normalizeRootPath(watchedDirectory.path());
+        foldersnap::WatchedRoot root;
+        root.rootId = foldersnap::createId();
+        root.displayName = "Quiet scheduled folder";
+        root.path = normalized.displayPath;
+        root.normalizedPath = normalized.identityPath;
+        root.schedule.kind = foldersnap::ScheduleKind::Interval;
+        root.schedule.intervalHours = 1;
+        root.schedule.nextDueAtUtc = foldersnap::UtcTimestamp{
+            QDateTime::currentDateTimeUtc().addSecs(-5 * 60).toMSecsSinceEpoch() * 1000000};
+
+        foldersnap::Configuration configuration;
+        configuration.roots.append(root);
+        const foldersnap::StoragePaths paths =
+            foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        foldersnap::ConfigurationStore(paths).saveConfiguration(configuration);
+
+        AppState state;
+        QVERIFY(QFile::remove(paths.configurationFile));
+        QVERIFY(QDir().mkpath(paths.configurationFile));
+        QTest::qWait(100);
+        QVERIFY(state.snapshots().isEmpty());
+
+        QVERIFY(QDir(paths.configurationFile).removeRecursively());
+        foldersnap::ConfigurationStore(paths).saveConfiguration(configuration);
+        const foldersnap::Configuration persisted =
+            foldersnap::ConfigurationStore(paths).loadConfiguration().value;
+        QCOMPARE(persisted.roots.first().schedule.nextDueAtUtc, root.schedule.nextDueAtUtc);
+    }
+
     void doesNotScheduleArchivedRoots()
     {
         QTemporaryDir dataDirectory;

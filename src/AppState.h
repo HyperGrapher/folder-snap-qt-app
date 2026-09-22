@@ -498,6 +498,7 @@ class AppState : public QObject
     void evaluateSchedules();
     void finishComparison();
     void invalidateComparison();
+    [[nodiscard]] bool persistConfiguration(const foldersnap::Configuration &configuration);
     [[nodiscard]] bool saveConfiguration();
     void setScanError(const QString &error);
     void setScanning(bool scanning);

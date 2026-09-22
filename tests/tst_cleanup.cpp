@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <memory>
 
 #include <QDir>
 #include <QFile>
@@ -11,10 +12,15 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 #include "cleanup/CleanupExecutor.h"
 #include "cleanup/CleanupPreflight.h"
 #include "domain/DomainError.h"
 #include "paths/WindowsPaths.h"
+#include "platform/windows/NativeFileMetadata.h"
 #include "scanner/MetadataScanner.h"
 
 namespace
@@ -274,6 +280,60 @@ class CleanupTest final : public QObject
     }
 
 #ifdef Q_OS_WIN
+    void refusesDirectoryWhenEnumerationFails()
+    {
+        QTemporaryDir dataDirectory;
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(dataDirectory.isValid());
+        QVERIFY(temporaryDirectory.isValid());
+        const QString directoryPath = temporaryDirectory.filePath("empty");
+        QVERIFY(QDir().mkpath(directoryPath));
+
+        const foldersnap::RootPath root = foldersnap::normalizeRootPath(temporaryDirectory.path());
+        const foldersnap::ScanResult scanResult = scan(root);
+        QVERIFY2(scanResult.error.isEmpty(), qPrintable(scanResult.error));
+
+        foldersnap::CleanupExecutionRequest request;
+        request.paths = foldersnap::StoragePaths::fromDataDirectory(dataDirectory.path());
+        request.root = root;
+        request.rootId = foldersnap::createId();
+        request.beforeId = foldersnap::createId();
+        request.afterId = foldersnap::createId();
+        request.candidates = candidatesFor(scanResult.snapshot, {"empty"});
+        request.selectedPaths = {"empty"};
+
+        const auto closeHandle = [](HANDLE handle)
+        {
+            if (handle != nullptr && handle != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(handle);
+            }
+        };
+        const QString nativePath = foldersnap::extendedNativePath(directoryPath);
+        const std::unique_ptr<void, decltype(closeHandle)> handle(
+            CreateFileW(reinterpret_cast<LPCWSTR>(nativePath.utf16()), FILE_LIST_DIRECTORY, 0,
+                        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr),
+            closeHandle);
+        if (handle.get() == INVALID_HANDLE_VALUE)
+        {
+            QSKIP("The test environment does not allow opening a directory without sharing.");
+        }
+
+        int moveAttempts = 0;
+        const auto result =
+            foldersnap::CleanupExecutor::execute(request,
+                                                 [&moveAttempts](const QString &)
+                                                 {
+                                                     ++moveAttempts;
+                                                     return foldersnap::CleanupMoveResult{true};
+                                                 });
+
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(moveAttempts, 0);
+        QCOMPARE(executionItemAt(result, "empty")->status,
+                 foldersnap::CleanupStatus::AccessDeniedOrUnreadable);
+    }
+
     void reparseAncestorBlocksCleanup()
     {
         QTemporaryDir watchedDirectory;

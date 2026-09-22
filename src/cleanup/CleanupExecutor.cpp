@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <QUuid>
 
 #ifdef Q_OS_WIN
@@ -77,33 +78,6 @@ void summarize(CleanupExecutionResult &result)
 CleanupExecutionItem itemFor(const CleanupPreflightItem &item)
 {
     return {item.path, item.status, item.detail};
-}
-
-CleanupExecutionItem *findItem(QList<CleanupExecutionItem> &items, const QString &path)
-{
-    const auto iterator = std::find_if(items.begin(), items.end(),
-                                       [&path](const auto &item) { return item.path == path; });
-    return iterator == items.end() ? nullptr : &*iterator;
-}
-
-const CleanupExecutionItem *findItem(const QList<CleanupExecutionItem> &items, const QString &path)
-{
-    const auto iterator = std::find_if(items.cbegin(), items.cend(),
-                                       [&path](const auto &item) { return item.path == path; });
-    return iterator == items.cend() ? nullptr : &*iterator;
-}
-
-bool hasFailedDescendant(const QList<CleanupExecutionItem> &items, const QString &path)
-{
-    for (const CleanupExecutionItem &item : items)
-    {
-        if (item.path == path || !isAtOrBelow(item.path, path) || isSuccessful(item))
-        {
-            continue;
-        }
-        return true;
-    }
-    return false;
 }
 
 CleanupMoveResult unsupportedMove(const QString &)
@@ -528,18 +502,64 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
         }
         ensureAuditWritable(request);
 
-        QHash<QString, EntryType> typesByPath;
+        QHash<QString, CleanupCandidate> candidatesByPath;
         for (const CleanupCandidate &candidate : request.candidates)
         {
             try
             {
-                typesByPath.insert(normalizeRelativePath(candidate.after.path),
-                                   candidate.after.type);
+                const QString path = normalizeRelativePath(candidate.after.path);
+                if (!candidatesByPath.contains(path))
+                {
+                    candidatesByPath.insert(path, candidate);
+                }
             }
             catch (const DomainError &)
             {
             }
         }
+
+        QHash<QString, EntryType> typesByPath;
+        for (auto iterator = candidatesByPath.cbegin(); iterator != candidatesByPath.cend();
+             ++iterator)
+        {
+            typesByPath.insert(iterator.key(), iterator.value().after.type);
+        }
+
+        QSet<QString> selectedRoots;
+        for (const QString &selectedPath : request.selectedPaths)
+        {
+            try
+            {
+                const QString path = normalizeRelativePath(selectedPath);
+                if (candidatesByPath.contains(path))
+                {
+                    selectedRoots.insert(path);
+                }
+            }
+            catch (const DomainError &)
+            {
+            }
+        }
+        QSet<QString> selectedCandidatePaths;
+        for (auto iterator = candidatesByPath.cbegin(); iterator != candidatesByPath.cend();
+             ++iterator)
+        {
+            for (QString ancestor = iterator.key(); !ancestor.isEmpty();)
+            {
+                if (selectedRoots.contains(ancestor))
+                {
+                    selectedCandidatePaths.insert(iterator.key());
+                    break;
+                }
+                const qsizetype separator = ancestor.lastIndexOf('/');
+                if (separator < 0)
+                {
+                    break;
+                }
+                ancestor = ancestor.left(separator);
+            }
+        }
+        const bool rootHasReparsePoint = hasReparsePointInPath(request.root.displayPath);
 
         QStringList readyPaths;
         for (const CleanupExecutionItem &item : std::as_const(result.items))
@@ -565,24 +585,61 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
                       return left < right;
                   });
 
+        QHash<QString, int> resultIndex;
+        for (int index = 0; index < result.items.size(); ++index)
+        {
+            resultIndex.insert(result.items.at(index).path, index);
+        }
+
+        // Keep only failed descendants in an ancestor index. This avoids scanning every result
+        // item for each parent while retaining the deepest-first safety ordering.
+        QHash<QString, int> failedDescendantCounts;
+        const auto markFailedPath = [&failedDescendantCounts](const QString &failedPath)
+        {
+            QString ancestor = failedPath;
+            while (ancestor.contains('/'))
+            {
+                ancestor = ancestor.left(ancestor.lastIndexOf('/'));
+                ++failedDescendantCounts[ancestor];
+            }
+        };
+        for (const CleanupExecutionItem &item : std::as_const(result.items))
+        {
+            if (!isSuccessful(item) && item.status != CleanupStatus::Ready)
+            {
+                markFailedPath(item.path);
+            }
+        }
+
         const CleanupMoveCallback moveItem = move ? move : defaultMoveCallback();
         for (const QString &path : std::as_const(readyPaths))
         {
             checkCancelled(cancelled);
-            CleanupExecutionItem *item = findItem(result.items, path);
-            if (!item)
+            const auto itemIndex = resultIndex.constFind(path);
+            if (itemIndex == resultIndex.cend())
             {
                 continue;
             }
-            if (hasFailedDescendant(result.items, path))
+            CleanupExecutionItem &item = result.items[*itemIndex];
+            if (failedDescendantCounts.value(path) > 0)
             {
-                item->status = CleanupStatus::Failed;
-                item->detail = "A selected descendant was not moved, so the parent was kept.";
+                item.status = CleanupStatus::Failed;
+                item.detail = "A selected descendant was not moved, so the parent was kept.";
+                markFailedPath(path);
                 continue;
             }
 
-            const CleanupPreflightResult currentCheck =
-                CleanupPreflight::inspect(request.root, request.candidates, {path}, cancelled);
+            const auto candidate = candidatesByPath.constFind(path);
+            if (candidate == candidatesByPath.cend())
+            {
+                item.status = CleanupStatus::Failed;
+                item.detail = "The live path could not be revalidated.";
+                markFailedPath(path);
+                continue;
+            }
+            const CleanupPreflightResult currentCheck = CleanupPreflight::revalidate(
+                request.root, candidate.value(), selectedCandidatePaths, rootHasReparsePoint,
+                cancelled);
             if (currentCheck.cancelled)
             {
                 result.cancelled = true;
@@ -599,14 +656,19 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
             }
             if (!current)
             {
-                item->status = CleanupStatus::Failed;
-                item->detail = "The live path could not be revalidated.";
+                item.status = CleanupStatus::Failed;
+                item.detail = "The live path could not be revalidated.";
+                markFailedPath(path);
                 continue;
             }
             if (current->status != CleanupStatus::Ready)
             {
-                item->status = current->status;
-                item->detail = current->detail;
+                item.status = current->status;
+                item.detail = current->detail;
+                if (!isSuccessful(item))
+                {
+                    markFailedPath(path);
+                }
                 continue;
             }
 
@@ -617,8 +679,9 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
             }
             catch (const DomainError &error)
             {
-                item->status = CleanupStatus::OutsideRootOrInvalid;
-                item->detail = error.message();
+                item.status = CleanupStatus::OutsideRootOrInvalid;
+                item.detail = error.message();
+                markFailedPath(path);
                 continue;
             }
 
@@ -627,20 +690,22 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
                 const QFileInfo directoryInfo(absolutePath);
                 if (!directoryInfo.exists())
                 {
-                    item->status = CleanupStatus::AlreadyMissing;
-                    item->detail = "The directory disappeared before it could be moved.";
+                    item.status = CleanupStatus::AlreadyMissing;
+                    item.detail = "The directory disappeared before it could be moved.";
                     continue;
                 }
                 if (!directoryInfo.isDir())
                 {
-                    item->status = CleanupStatus::TypeChanged;
-                    item->detail = "The live path is no longer a directory.";
+                    item.status = CleanupStatus::TypeChanged;
+                    item.detail = "The live path is no longer a directory.";
+                    markFailedPath(path);
                     continue;
                 }
                 if (!directoryInfo.isReadable())
                 {
-                    item->status = CleanupStatus::AccessDeniedOrUnreadable;
-                    item->detail = "The directory could not be read before it was moved.";
+                    item.status = CleanupStatus::AccessDeniedOrUnreadable;
+                    item.detail = "The directory could not be read before it was moved.";
+                    markFailedPath(path);
                     continue;
                 }
 
@@ -650,19 +715,24 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
                                               { hasRemainingEntries = true; });
                 if (enumerationError)
                 {
-                    item->status = *enumerationError == DirectoryEnumerationError::NotFound
-                                       ? CleanupStatus::AlreadyMissing
-                                       : CleanupStatus::AccessDeniedOrUnreadable;
-                    item->detail =
+                    item.status = *enumerationError == DirectoryEnumerationError::NotFound
+                                      ? CleanupStatus::AlreadyMissing
+                                      : CleanupStatus::AccessDeniedOrUnreadable;
+                    item.detail =
                         *enumerationError == DirectoryEnumerationError::NotFound
                             ? "The directory disappeared before it could be moved."
                             : "The directory could not be enumerated before it was moved.";
+                    if (!isSuccessful(item))
+                    {
+                        markFailedPath(path);
+                    }
                     continue;
                 }
                 if (hasRemainingEntries)
                 {
-                    item->status = CleanupStatus::Failed;
-                    item->detail = "The directory still contains content, so it was kept in place.";
+                    item.status = CleanupStatus::Failed;
+                    item.detail = "The directory still contains content, so it was kept in place.";
+                    markFailedPath(path);
                     continue;
                 }
             }
@@ -670,19 +740,20 @@ CleanupExecutionResult CleanupExecutor::execute(const CleanupExecutionRequest &r
             const CleanupMoveResult moveResult = moveItem(absolutePath);
             if (moveResult.moved)
             {
-                item->status = CleanupStatus::MovedToRecycleBin;
-                item->detail = "Moved to the Windows Recycle Bin.";
+                item.status = CleanupStatus::MovedToRecycleBin;
+                item.detail = "Moved to the Windows Recycle Bin.";
             }
             else if (moveResult.alreadyMissing)
             {
-                item->status = CleanupStatus::AlreadyMissing;
-                item->detail = moveResult.detail;
+                item.status = CleanupStatus::AlreadyMissing;
+                item.detail = moveResult.detail;
             }
             else
             {
-                item->status = CleanupStatus::Failed;
-                item->detail = moveResult.detail.isEmpty() ? "The Recycle Bin move failed."
-                                                           : moveResult.detail;
+                item.status = CleanupStatus::Failed;
+                item.detail = moveResult.detail.isEmpty() ? "The Recycle Bin move failed."
+                                                          : moveResult.detail;
+                markFailedPath(path);
             }
         }
         summarize(result);

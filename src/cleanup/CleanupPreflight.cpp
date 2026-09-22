@@ -305,64 +305,87 @@ DirectoryInspection inspectDirectoryContent(const RootPath &root, const QString 
         return result;
     }
 
-    const QDir directory(absolutePath);
-    const QFileInfoList children = directory.entryInfoList(
-        QDir::NoDotAndDotDot | QDir::AllEntries | QDir::Hidden | QDir::System, QDir::NoSort);
-    for (const QFileInfo &child : children)
-    {
-        checkCancelled(cancelled);
-        const QString childRelative = QDir(root.displayPath).relativeFilePath(child.filePath());
-        QString childKey;
-        try
+    std::optional<DirectoryInspection> failure;
+    const auto enumerationError = enumerateDirectoryEntries(
+        absolutePath,
+        [&](const QString &childPath)
         {
-            childKey = normalizeRelativePath(childRelative);
-        }
-        catch (const DomainError &)
-        {
-            const DirectoryInspection result{CleanupStatus::OutsideRootOrInvalid,
-                                             "A live child path is outside the watched root."};
-            cache.insert(relativePath, result);
-            return result;
-        }
-
-        const LiveEntry live = probePath(child.filePath());
-        if (live.state == ProbeState::Missing)
-        {
-            continue;
-        }
-        if (live.state == ProbeState::AccessDenied)
-        {
-            const DirectoryInspection result{CleanupStatus::AccessDeniedOrUnreadable,
-                                             "A live child could not be read."};
-            cache.insert(relativePath, result);
-            return result;
-        }
-        if (live.state == ProbeState::Failed)
-        {
-            const DirectoryInspection result{CleanupStatus::Failed,
-                                             "A live child could not be checked."};
-            cache.insert(relativePath, result);
-            return result;
-        }
-        if (!selectedPaths.contains(childKey))
-        {
-            const DirectoryInspection result{
-                CleanupStatus::ContainsUntrackedContent,
-                QString("The directory contains an unselected child: %1.").arg(childKey)};
-            cache.insert(relativePath, result);
-            return result;
-        }
-        if (live.type == EntryType::Directory)
-        {
-            const DirectoryInspection nested = inspectDirectoryContent(
-                root, childKey, child.filePath(), selectedPaths, cancelled, cache);
-            if (nested.status != CleanupStatus::Ready &&
-                nested.status != CleanupStatus::AlreadyMissing)
+            if (failure)
             {
-                cache.insert(relativePath, nested);
-                return nested;
+                return;
             }
+            const QFileInfo child(childPath);
+            checkCancelled(cancelled);
+            const QString childRelative = QDir(root.displayPath).relativeFilePath(child.filePath());
+            QString childKey;
+            try
+            {
+                childKey = normalizeRelativePath(childRelative);
+            }
+            catch (const DomainError &)
+            {
+                failure = DirectoryInspection{CleanupStatus::OutsideRootOrInvalid,
+                                              "A live child path is outside the watched root."};
+                return;
+            }
+
+            const LiveEntry live = probePath(child.filePath());
+            if (live.state == ProbeState::Missing)
+            {
+                return;
+            }
+            if (live.state == ProbeState::AccessDenied)
+            {
+                failure = DirectoryInspection{CleanupStatus::AccessDeniedOrUnreadable,
+                                              "A live child could not be read."};
+                return;
+            }
+            if (live.state == ProbeState::Failed)
+            {
+                failure = DirectoryInspection{CleanupStatus::Failed,
+                                              "A live child could not be checked."};
+                return;
+            }
+            if (!selectedPaths.contains(childKey))
+            {
+                failure = DirectoryInspection{
+                    CleanupStatus::ContainsUntrackedContent,
+                    QString("The directory contains an unselected child: %1.").arg(childKey)};
+                return;
+            }
+            if (live.type == EntryType::Directory)
+            {
+                const DirectoryInspection nested = inspectDirectoryContent(
+                    root, childKey, child.filePath(), selectedPaths, cancelled, cache);
+                if (nested.status != CleanupStatus::Ready &&
+                    nested.status != CleanupStatus::AlreadyMissing)
+                {
+                    failure = nested;
+                }
+            }
+        });
+    if (enumerationError)
+    {
+        switch (*enumerationError)
+        {
+        case DirectoryEnumerationError::NotFound:
+            failure = DirectoryInspection{CleanupStatus::AlreadyMissing,
+                                          "The directory disappeared while it was being read."};
+            break;
+        case DirectoryEnumerationError::AccessDenied:
+            failure = DirectoryInspection{CleanupStatus::AccessDeniedOrUnreadable,
+                                          "The directory could not be enumerated."};
+            break;
+        case DirectoryEnumerationError::Io:
+            failure = DirectoryInspection{CleanupStatus::Failed,
+                                          "The directory could not be enumerated."};
+            break;
         }
+    }
+    if (failure)
+    {
+        cache.insert(relativePath, *failure);
+        return *failure;
     }
 
     const DirectoryInspection result{};
@@ -645,6 +668,30 @@ CleanupPreflightResult CleanupPreflight::inspect(const RootPath &root,
                 }
             }
         }
+        summarize(result);
+    }
+    catch (const PreflightCancelled &)
+    {
+        result.items.clear();
+        result.summary = {};
+        result.cancelled = true;
+    }
+    return result;
+}
+
+CleanupPreflightResult CleanupPreflight::revalidate(const RootPath &root,
+                                                    const CleanupCandidate &candidate,
+                                                    const QSet<QString> &selectedCandidatePaths,
+                                                    bool rootHasReparsePoint,
+                                                    const CancellationCallback &cancelled)
+{
+    CleanupPreflightResult result;
+    try
+    {
+        checkCancelled(cancelled);
+        QHash<QString, DirectoryInspection> directoryCache;
+        result.items.append(inspectCandidate(root, candidate, selectedCandidatePaths, cancelled,
+                                             rootHasReparsePoint, directoryCache));
         summarize(result);
     }
     catch (const PreflightCancelled &)

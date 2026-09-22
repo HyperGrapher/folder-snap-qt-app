@@ -3,6 +3,7 @@
 #include <functional>
 
 #include <QList>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -61,5 +62,12 @@ class CleanupPreflight final
                                                         const QList<CleanupCandidate> &candidates,
                                                         const QStringList &selectedPaths,
                                                         const CancellationCallback &cancelled = {});
+
+    // Revalidate one live candidate without rebuilding the complete selection index. The
+    // selected paths are normalized candidate paths, including descendants of selected folders.
+    [[nodiscard]] static CleanupPreflightResult
+    revalidate(const RootPath &root, const CleanupCandidate &candidate,
+               const QSet<QString> &selectedCandidatePaths, bool rootHasReparsePoint,
+               const CancellationCallback &cancelled = {});
 };
 } // namespace foldersnap

@@ -222,6 +222,36 @@ class ScannerTest final : public QObject
         QCOMPARE(*missingError, foldersnap::DirectoryEnumerationError::NotFound);
     }
 
+    void nativeDirectoryEnumerationReportsSharingFailures()
+    {
+        QTemporaryDir temporaryDirectory;
+        QVERIFY(temporaryDirectory.isValid());
+        const QString blockedDirectory = temporaryDirectory.filePath("blocked");
+        QVERIFY(QDir().mkpath(blockedDirectory));
+
+        const auto closeHandle = [](HANDLE handle)
+        {
+            if (handle != nullptr && handle != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(handle);
+            }
+        };
+        const QString nativePath = foldersnap::extendedNativePath(blockedDirectory);
+        const std::unique_ptr<void, decltype(closeHandle)> handle(
+            CreateFileW(reinterpret_cast<LPCWSTR>(nativePath.utf16()), FILE_LIST_DIRECTORY, 0,
+                        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr),
+            closeHandle);
+        if (handle.get() == INVALID_HANDLE_VALUE)
+        {
+            QSKIP("The test environment does not allow opening a directory without sharing.");
+        }
+
+        const auto error =
+            foldersnap::enumerateDirectoryEntries(blockedDirectory, [](const QString &) {});
+        QVERIFY(error.has_value());
+        QCOMPARE(*error, foldersnap::DirectoryEnumerationError::AccessDenied);
+    }
+
     void capturesSubMillisecondNativeTimestamps()
     {
         QTemporaryDir temporaryDirectory;
