@@ -3,66 +3,148 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <title>FolderSnap report</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; background:#0d1519; color:#e8f1ed; }
-    * { box-sizing: border-box; }
-    body { margin:0; min-width:320px; background:radial-gradient(circle at 15% 0,#17312e 0,transparent 35%),#0d1519; }
+    :root {
+      color-scheme: dark light;
+      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      --bg:#0b1316; --surface:#121d22; --surface-2:#1a2a30; --line:#26373d; --line-soft:#1f2f35;
+      --text:#e8f1ed; --muted:#a3b6b0; --faint:#7b908a;
+      --accent:#7fe0bc; --folder:#e3b866;
+      --added:#73d7ad; --removed:#ef8992; --modified:#e8c56f; --warn:#c0a2ef;
+      --c1:#5fd3ad; --c2:#6aa9f0; --c3:#e8c56f; --c4:#c0a2ef; --c5:#ef8992; --c6:#8bd16b; --c7:#6f8581;
+      --shadow:0 1px 0 rgba(255,255,255,.03) inset;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg:#f3f6f5; --surface:#ffffff; --surface-2:#e9efed; --line:#d3dedb; --line-soft:#e3ebe8;
+        --text:#14211f; --muted:#506260; --faint:#78898a;
+        --accent:#0d7a58; --folder:#c78a14;
+        --added:#12805c; --removed:#c23a4a; --modified:#966a05; --warn:#6f4bb3;
+        --c1:#1a9c78; --c2:#2f78c9; --c3:#c28a0a; --c4:#7d57c4; --c5:#cc4a58; --c6:#4f9a2c; --c7:#8a9b98;
+        --shadow:0 1px 2px rgba(20,33,31,.06);
+      }
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:320px; color:var(--text); background:radial-gradient(900px 380px at 8% -8%,color-mix(in srgb,var(--accent) 16%,transparent),transparent),var(--bg); background-repeat:no-repeat; line-height:1.4; }
     header, main { width:min(1180px,calc(100% - 32px)); margin:auto; }
-    header { padding:30px 0 18px; }
-    h1 { margin:5px 0; font-size:clamp(24px,4vw,38px); letter-spacing:-.04em; }
-    .eyebrow { color:#94e6c6; font-size:11px; letter-spacing:.16em; text-transform:uppercase; }
-    .summary { color:#aebfba; display:flex; flex-wrap:wrap; gap:8px 18px; font-size:13px; }
-    .toolbar { position:sticky; top:0; z-index:4; display:grid; grid-template-columns:minmax(180px,1fr) repeat(3,auto); gap:8px; padding:10px; border:1px solid #314146; border-radius:11px; background:#142126ee; backdrop-filter:blur(14px); }
-    input, select { min-height:34px; border:1px solid #3b4d51; border-radius:7px; padding:0 10px; background:#0f1a1e; color:#e8f1ed; font:inherit; }
-    input:focus, select:focus { outline:2px solid #94e6c6; outline-offset:1px; }
-    #tree { margin:12px 0 26px; border:1px solid #2d3d42; border-radius:11px; overflow:hidden; background:#111c21; }
-    details { border-top:1px solid #26363b; }
-    details:first-child { border-top:0; }
+    header { padding:34px 0 6px; }
+    button, input, select { font:inherit; color:inherit; }
+    :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+    .brand { display:flex; align-items:center; gap:9px; color:var(--accent); font-size:11px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; }
+    .mark { width:18px; height:18px; border-radius:5px; background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 35%,#3b78c4)); position:relative; }
+    .mark::after { content:""; position:absolute; inset:5px; border-radius:2px; background:var(--bg); opacity:.55; }
+    .kind { border:1px solid color-mix(in srgb,var(--accent) 45%,transparent); border-radius:999px; padding:2px 8px; letter-spacing:.1em; }
+    h1 { margin:12px 0 6px; font-size:clamp(26px,4.6vw,42px); line-height:1.08; letter-spacing:-.035em; font-weight:760; overflow-wrap:anywhere; }
+    .rootpath { margin:0; color:var(--muted); font:12px/1.5 ui-monospace,"Cascadia Mono",Consolas,monospace; overflow-wrap:anywhere; }
+    .when { margin:6px 0 0; color:var(--muted); font-size:13px; }
+    .notices { display:flex; flex-direction:column; gap:6px; margin-top:14px; }
+    .notices:empty { display:none; }
+    .notice { padding:8px 12px; border:1px solid color-mix(in srgb,var(--modified) 45%,transparent); border-radius:9px; background:color-mix(in srgb,var(--modified) 10%,transparent); color:var(--text); font-size:12px; }
+
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:10px; margin-top:22px; }
+    .stat { --tone:var(--text); display:flex; flex-direction:column; gap:3px; min-width:0; padding:13px 15px 12px; text-align:left; border:1px solid var(--line); border-radius:13px; background:var(--surface); box-shadow:var(--shadow); }
+    .stat.tone-added { --tone:var(--added); } .stat.tone-removed { --tone:var(--removed); }
+    .stat.tone-modified { --tone:var(--modified); } .stat.tone-warn { --tone:var(--warn); }
+    .stat .label { color:var(--muted); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; }
+    .stat .value { color:var(--tone); font-size:clamp(21px,3vw,28px); font-weight:720; letter-spacing:-.025em; font-variant-numeric:tabular-nums; line-height:1.15; }
+    .stat .sub { color:var(--faint); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    button.stat { cursor:pointer; transition:border-color .12s, background-color .12s; }
+    button.stat:hover { border-color:var(--tone); }
+    button.stat[aria-pressed="true"] { border-color:var(--tone); background:color-mix(in srgb,var(--tone) 11%,var(--surface)); }
+
+    .typebar { margin-top:10px; padding:13px 15px 14px; border:1px solid var(--line); border-radius:13px; background:var(--surface); box-shadow:var(--shadow); }
+    .typebar h2 { margin:0 0 9px; color:var(--muted); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; }
+    .bar { display:flex; gap:2px; height:11px; overflow:hidden; border-radius:999px; background:var(--surface-2); }
+    .bar span { min-width:3px; }
+    .legend { display:flex; flex-wrap:wrap; gap:6px 18px; margin:11px 0 0; padding:0; list-style:none; color:var(--muted); font-size:12px; }
+    .legend li { display:flex; align-items:center; gap:6px; }
+    .swatch { width:9px; height:9px; border-radius:3px; flex:none; }
+    .legend b { color:var(--text); font-weight:600; }
+
+    .toolbar { position:sticky; top:0; z-index:4; display:grid; grid-template-columns:minmax(180px,1fr) repeat(3,auto); gap:8px; margin-top:22px; padding:10px; border:1px solid var(--line); border-radius:13px; background:color-mix(in srgb,var(--surface) 90%,transparent); backdrop-filter:blur(14px); box-shadow:var(--shadow); }
+    input, select { min-height:36px; border:1px solid var(--line); border-radius:8px; padding:0 11px; background:var(--bg); }
+    input::placeholder { color:var(--faint); }
+    select { cursor:pointer; }
+    .listbar { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:14px 2px 8px; color:var(--muted); font-size:12px; }
+    .actions { display:flex; gap:6px; }
+    .ghost { min-height:28px; padding:0 11px; border:1px solid var(--line); border-radius:7px; background:transparent; color:var(--muted); font-size:12px; cursor:pointer; }
+    .ghost:hover { color:var(--text); border-color:var(--faint); }
+
+    .panel { margin-bottom:22px; border:1px solid var(--line); border-radius:13px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow); }
+    #tree { background:var(--surface); }
+    details { border:0; }
     summary { position:relative; cursor:pointer; list-style:none; }
     summary::-webkit-details-marker { display:none; }
-    summary::before { content:"›"; position:absolute; left:12px; top:50%; width:12px; color:#94e6c6; font-size:17px; line-height:1; transform:translateY(-50%) rotate(0); transition:transform .12s; }
+    summary::before { content:"›"; position:absolute; left:14px; top:50%; width:12px; color:var(--accent); font-size:17px; line-height:1; transform:translateY(-50%) rotate(0); transition:transform .12s; }
     details[open] > summary::before { transform:translateY(-50%) rotate(90deg); }
-    .row { min-height:40px; display:grid; grid-template-columns:minmax(220px,1fr) 95px minmax(145px,auto) 155px auto; align-items:center; gap:10px; padding:6px 12px; border-top:1px solid #26363b; }
-    summary.row { padding-left:36px; }
-    .row:hover { background:#1a292d; }
-    .name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; line-height:1.15; }
-    .path { display:block; margin-top:2px; color:#879b96; font-size:9px; font-weight:400; overflow:hidden; text-overflow:ellipsis; }
-    .meta { color:#afc0bb; font-size:11px; white-space:nowrap; }
+    .row { --tone:transparent; min-height:42px; display:grid; grid-template-columns:minmax(220px,1fr) 95px minmax(145px,auto) 155px auto; align-items:center; gap:10px; padding:6px 14px; border-top:1px solid var(--line-soft); background-image:linear-gradient(90deg,color-mix(in srgb,var(--accent) 55%,transparent) var(--share,0%),transparent var(--share,0%)); background-size:100% 2px; background-position:left bottom; background-repeat:no-repeat; }
+    #tree > :first-child, #tree > details:first-child > summary.row { border-top:0; }
+    summary.row { padding-left:38px; }
+    .row:hover { background-color:var(--surface-2); }
+    .row.head { min-height:34px; border-top:0; border-bottom:1px solid var(--line); background:var(--surface-2); background-image:none; color:var(--faint); font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+    .row.head:hover { background-color:var(--surface-2); }
+    .row.head > span { grid-column:auto; }
+    .name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; font-weight:600; line-height:1.2; }
+    div.row .name { font-weight:500; }
+    .path { display:block; margin-top:2px; color:var(--faint); font-size:10px; font-weight:400; overflow:hidden; text-overflow:ellipsis; }
+    .meta { color:var(--muted); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
     .row .name { grid-column:1; }
     .row .type { grid-column:2; }
     .row .size { grid-column:3; }
     .row .date { grid-column:4; }
     .row .badge { grid-column:5; }
-    .badge { justify-self:start; border:1px solid #526267; border-radius:999px; padding:2px 7px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
-    .status-added { background:#173c31; border-left:4px solid #73d7ad; }
-    .status-removed { background:#3a2025; border-left:4px solid #ef8992; }
-    .status-modified { background:#3a3420; border-left:4px solid #e8c56f; }
-    .status-warning { background:#332b3d; border-left:4px solid #c0a2ef; }
-    .children { margin-left:16px; border-left:1px solid #324348; }
-    .empty { padding:34px 18px; text-align:center; color:#8ea19c; }
-    #warnings { margin:0 0 28px; }
-    .warning { padding:8px 11px; margin-top:7px; border:1px solid #6a5930; border-radius:7px; background:#332d1d; color:#ead08a; font-size:12px; }
-    footer { padding:0 0 26px; color:#71847f; font-size:10px; }
+    .comparison .row { grid-template-columns:minmax(220px,1fr) 95px 190px 155px 132px; }
+    .ico { position:relative; display:inline-block; flex:none; width:16px; height:12px; margin-right:10px; border-radius:2px 3px 3px 3px; background:var(--folder); vertical-align:-1px; }
+    .ico::before { content:""; position:absolute; left:0; top:-3px; width:7px; height:4px; border-radius:2px 2px 0 0; background:var(--folder); }
+    .ico.file { width:12px; height:15px; margin:0 12px 0 2px; border:1.5px solid var(--faint); border-radius:2px; background:transparent; vertical-align:-3px; }
+    .ico.file::before { left:2px; top:5px; width:5px; height:1.5px; border-radius:0; background:var(--faint); box-shadow:0 3px 0 var(--faint); }
+    .ico.other { border-style:dashed; }
+    .badge { justify-self:start; border:1px solid color-mix(in srgb,var(--tone) 55%,transparent); border-radius:999px; padding:2px 8px; color:var(--tone); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
+    .status-added { --tone:var(--added); } .status-removed { --tone:var(--removed); }
+    .status-modified { --tone:var(--modified); } .status-warning { --tone:var(--warn); }
+    .status-added, .status-removed, .status-modified, .status-warning { background-color:color-mix(in srgb,var(--tone) 10%,transparent); box-shadow:inset 3px 0 0 var(--tone); }
+    .status-added:hover, .status-removed:hover, .status-modified:hover, .status-warning:hover { background-color:color-mix(in srgb,var(--tone) 17%,transparent); }
+    .children { margin-left:19px; border-left:1px solid var(--line); }
+    .empty { padding:40px 18px; text-align:center; color:var(--faint); }
+    #warnings { margin:0 0 26px; }
+    #warnings summary { padding:10px 14px 10px 36px; border:1px solid color-mix(in srgb,var(--modified) 40%,transparent); border-radius:10px; background:color-mix(in srgb,var(--modified) 9%,transparent); font-size:13px; font-weight:600; }
+    #warnings summary::before { left:14px; color:var(--modified); }
+    .warning { padding:8px 12px; margin-top:6px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+    footer { padding:0 0 28px; color:var(--faint); font-size:11px; }
     @media (max-width:800px) {
+      header { padding-top:24px; }
       .toolbar { grid-template-columns:1fr 1fr; }
       .toolbar input { grid-column:1/-1; }
-      .row { grid-template-columns:minmax(150px,1fr) auto; gap:7px; padding:6px 10px; }
+      .row, .comparison .row { grid-template-columns:minmax(150px,1fr) auto; gap:7px; padding:6px 10px; }
+      .row.head { display:none; }
       .row .type, .row .date { display:none; }
       .row .name { grid-column:1; grid-row:1; }
       .row .size { grid-column:2; grid-row:1; }
       .row .badge { grid-column:2; grid-row:2; }
-      summary.row { padding-left:32px; }
+      summary.row { padding-left:34px; }
+      summary::before { left:11px; }
     }
+    @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+    @media print { .toolbar, .actions { display:none; } body { background:#fff; } }
   </style>
 </head>
 <body>
   <script id="foldersnap-data" type="application/json">/* FOLDERSNAP_REPORT_DATA */</script>
   <header>
-    <div class="eyebrow">FolderSnap · Offline metadata report</div>
+    <div class="brand"><span class="mark"></span><span>FolderSnap</span><span class="kind" id="kind">Report</span></div>
     <h1 id="title">FolderSnap report</h1>
-    <div class="summary" id="summary" aria-live="polite"></div>
+    <p class="rootpath" id="rootpath" hidden></p>
+    <p class="when" id="when" hidden></p>
+    <div class="notices" id="notices"></div>
+    <div class="stats" id="stats" aria-label="Report statistics"></div>
+    <section class="typebar" id="typebar" aria-label="Space by file type" hidden>
+      <h2>Space by file type</h2>
+      <div class="bar" id="typeBar"></div>
+      <ul class="legend" id="typeLegend"></ul>
+    </section>
   </header>
   <main>
     <section class="toolbar" aria-label="Report controls">
@@ -75,8 +157,8 @@
         <option value="warning">Warnings</option>
       </select>
       <select id="sort" aria-label="Sort field">
+        <option value="size" selected>Size</option>
         <option value="name">Name</option>
-        <option value="size">Size</option>
         <option value="created">Creation date</option>
       </select>
       <select id="direction" aria-label="Sort direction">
@@ -84,7 +166,17 @@
         <option value="desc" selected>Descending</option>
       </select>
     </section>
-    <section id="tree" aria-label="Folder tree"></section>
+    <div class="listbar">
+      <span id="summary" aria-live="polite"></span>
+      <span class="actions">
+        <button type="button" class="ghost" id="expandAll">Expand all</button>
+        <button type="button" class="ghost" id="collapseAll">Collapse all</button>
+      </span>
+    </div>
+    <section class="panel">
+      <div class="row head" aria-hidden="true"><span>Name</span><span>Type</span><span>Size</span><span>Created</span><span id="statusHead">Status</span></div>
+      <div id="tree" aria-label="Folder tree"></div>
+    </section>
     <section id="warnings" aria-label="Snapshot warnings"></section>
     <footer>Generated locally by FolderSnap. This report contains metadata only and makes no network requests.</footer>
   </main>
@@ -94,23 +186,33 @@
     let report = emptyReport;
     try { report = JSON.parse(document.getElementById("foldersnap-data").textContent); } catch (_) {}
     const isComparison = report.reportType === "comparison";
+    const reportHeader = report.header || {};
     const controls = {
       search: document.getElementById("search"), filter: document.getElementById("filter"),
       sort: document.getElementById("sort"), direction: document.getElementById("direction")
     };
     controls.filter.hidden = !isComparison;
+    document.body.classList.toggle("comparison", isComparison);
+    document.getElementById("statusHead").hidden = !isComparison;
     const treeElement = document.getElementById("tree");
     const warningElement = document.getElementById("warnings");
     const titleElement = document.getElementById("title");
     const summaryElement = document.getElementById("summary");
+    const statsElement = document.getElementById("stats");
+    const noticesElement = document.getElementById("notices");
 
-    function text(parent, value, className) {
-      const element = document.createElement("span");
-      if (className) element.className = className;
-      element.textContent = value == null ? "" : String(value);
-      parent.appendChild(element);
-      return element;
+    function element(tag, className, value) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (value != null) node.textContent = String(value);
+      return node;
     }
+    function text(parent, value, className) {
+      const node = element("span", className, value == null ? "" : value);
+      parent.appendChild(node);
+      return node;
+    }
+    function toBig(value) { try { return BigInt(value == null || value === "" ? 0 : value); } catch (_) { return 0n; } }
     function statusLabel(status) {
       return ({added:"Added", removed:"Deleted", modified:"Modified", uncertain:"Warning", scope_difference:"Scope difference"})[status] || "";
     }
@@ -126,19 +228,37 @@
         return (tenths / 10n) + "." + (tenths % 10n) + " " + units[unit];
       } catch (_) { return String(value) + " B"; }
     }
+    function formatSignedBytes(value) {
+      const bytes = toBig(value);
+      if (bytes === 0n) return "0 B";
+      return (bytes < 0n ? "−" : "+") + formatBytes(bytes < 0n ? -bytes : bytes);
+    }
+    function formatCount(value) { return toBig(value).toLocaleString(); }
     function formatDate(value) {
       if (!value) return "—";
       const date = new Date(value);
       return Number.isNaN(date.valueOf()) ? "—" : date.toLocaleString();
     }
+    function formatDuration(startValue, endValue) {
+      const milliseconds = new Date(endValue) - new Date(startValue);
+      if (!Number.isFinite(milliseconds) || milliseconds < 0) return "—";
+      if (milliseconds < 1000) return Math.round(milliseconds) + " ms";
+      if (milliseconds < 60000) return (milliseconds / 1000).toFixed(1) + " s";
+      const minutes = Math.floor(milliseconds / 60000), seconds = Math.round((milliseconds % 60000) / 1000);
+      return minutes + " m " + seconds + " s";
+    }
+
     function createTree(entries) {
-      const root = {path:"", name:"", children:new Map(), data:null, depth:-1};
+      const root = {path:"", name:"", children:new Map(), data:null, depth:-1, parent:null, total:0};
       for (const entry of entries || []) {
         const parts = String(entry.path || "").split("/").filter(Boolean);
         let parent = root, path = "";
         parts.forEach((part, index) => {
           path = path ? path + "/" + part : part;
-          if (!parent.children.has(part)) parent.children.set(part, {path, name:part, children:new Map(), data:null, depth:index});
+          if (!parent.children.has(part)) {
+            parent.children.set(part, {path, name:part, children:new Map(), data:null, depth:index, parent});
+            root.total++;
+          }
           parent = parent.children.get(part);
         });
         if (parts.length) parent.data = entry;
@@ -198,14 +318,30 @@
       if (result === 0) result = left.path.localeCompare(right.path, undefined, {sensitivity:"base"});
       return result * direction;
     }
-    function addRow(container, node) {
+
+    const snapshotTotalBytes = toBig(reportHeader.totalFileBytes);
+    function shareOf(node) {
+      if (isComparison) return 0;
+      const parent = node.parent;
+      const folderTotal = parent && parent.path && report.folderSizes && report.folderSizes[parent.path]
+        ? toBig(report.folderSizes[parent.path].sizeBytes) : snapshotTotalBytes;
+      if (folderTotal <= 0n) return 0;
+      const permille = Number(toBig(sizeValue(node)) * 1000n / folderTotal);
+      return Math.min(100, permille / 10);
+    }
+    function addRow(container, node, showPath) {
       container.classList.add("row");
       const status = nodeStatus(node);
       if (status === "added" || status === "removed" || status === "modified") container.classList.add("status-" + status);
       if (status === "uncertain" || status === "scope_difference") container.classList.add("status-warning");
-      const nameCell = document.createElement("span"); nameCell.className = "name";
-      text(nameCell, displayName(node)); text(nameCell, node.path, "path"); container.appendChild(nameCell);
-      text(container, typeLabel(metadata(node).type || (isFolder(node) ? "directory" : "other")), "meta type");
+      if (!isComparison) container.style.setProperty("--share", shareOf(node).toFixed(1) + "%");
+      const kind = metadata(node).type || (isFolder(node) ? "directory" : "other");
+      const nameCell = element("span", "name");
+      nameCell.appendChild(element("span", kind === "directory" ? "ico" : kind === "file" ? "ico file" : "ico file other"));
+      text(nameCell, displayName(node));
+      if (showPath) text(nameCell, node.path, "path");
+      container.appendChild(nameCell);
+      text(container, typeLabel(kind), "meta type");
       if (isComparison) {
         const folderSizes = isFolder(node) && report.folderSizes ? report.folderSizes[node.path] : null;
         const before = folderSizes ? (folderSizes.beforePresent ? folderSizes.beforeBytes : null) : node.data?.before?.sizeBytes;
@@ -218,45 +354,169 @@
       if (created) date.dataset.utc = created;
       if (status) text(container, statusLabel(status), "badge");
     }
-    function renderNode(node, visible, query) {
+    function renderNode(node, visible, expandAll) {
       if (!visible.has(node)) return null;
       if (isFolder(node)) {
-        const details = document.createElement("details"); details.open = Boolean(query) || node.depth < 1;
-        const summary = document.createElement("summary"); addRow(summary, node); details.appendChild(summary);
+        const details = document.createElement("details"); details.open = expandAll || node.depth < 1;
+        const summary = document.createElement("summary"); addRow(summary, node, expandAll); details.appendChild(summary);
         const children = document.createElement("div"); children.className = "children";
         [...node.children.values()].filter(child => visible.has(child)).sort(compareNodes).forEach(child => {
-          const rendered = renderNode(child, visible, query); if (rendered) children.appendChild(rendered);
+          const rendered = renderNode(child, visible, expandAll); if (rendered) children.appendChild(rendered);
         });
         details.appendChild(children); return details;
       }
-      const row = document.createElement("div"); addRow(row, node); return row;
+      const row = document.createElement("div"); addRow(row, node, expandAll); return row;
     }
     const root = createTree(report.entries || []);
     function render() {
       const query = controls.search.value.trim().toLocaleLowerCase(), filter = controls.filter.value;
+      const expandAll = Boolean(query) || filter !== "all";
       const visible = visibleNodes(root, query, filter), fragment = document.createDocumentFragment();
       [...root.children.values()].filter(node => visible.has(node)).sort(compareNodes).forEach(node => {
-        const rendered = renderNode(node, visible, query); if (rendered) fragment.appendChild(rendered);
+        const rendered = renderNode(node, visible, expandAll); if (rendered) fragment.appendChild(rendered);
       });
       treeElement.replaceChildren(fragment);
       if (!visible.size) { const empty=document.createElement("div"); empty.className="empty"; empty.textContent="No entries match this view."; treeElement.appendChild(empty); }
-      summaryElement.textContent = visible.size + " visible entries";
+      summaryElement.textContent = visible.size.toLocaleString() + " of " + root.total.toLocaleString() + " entries shown";
+      syncStatCards();
     }
     let debounce;
     controls.search.addEventListener("input", () => { clearTimeout(debounce); debounce=setTimeout(render,160); });
     controls.filter.addEventListener("change", render); controls.sort.addEventListener("change", render); controls.direction.addEventListener("change", render);
+    function setAllOpen(open) { treeElement.querySelectorAll("details").forEach(details => { details.open = open; }); }
+    document.getElementById("expandAll").addEventListener("click", () => setAllOpen(true));
+    document.getElementById("collapseAll").addEventListener("click", () => setAllOpen(false));
+
     function reportTitle() {
-      const title = String(report.header?.rootTitle || "").trim();
+      const title = String(reportHeader.rootTitle || "").trim();
       if (title && title.toLocaleLowerCase() !== "unknown") return title;
-      const rootPath = String(report.header?.rootPath || "").replace(/[\\/]+$/, "");
+      const rootPath = String(reportHeader.rootPath || "").replace(/[\\/]+$/, "");
       return rootPath.split(/[\\/]/).pop() || "FolderSnap report";
     }
+
+    // Header statistics are derived from the embedded report data only.
+    function addStat(label, value, sub, tone, filter) {
+      const card = element(filter ? "button" : "div", "stat" + (tone ? " tone-" + tone : ""));
+      if (filter) { card.type = "button"; card.dataset.filter = filter; card.setAttribute("aria-pressed", "false"); }
+      card.appendChild(element("span", "label", label));
+      card.appendChild(element("span", "value", value));
+      if (sub) { const line = element("span", "sub", sub); line.title = sub; card.appendChild(line); }
+      if (filter) card.addEventListener("click", () => {
+        controls.filter.value = controls.filter.value === filter ? "all" : filter;
+        render();
+      });
+      statsElement.appendChild(card);
+    }
+    function syncStatCards() {
+      statsElement.querySelectorAll("button.stat").forEach(card => {
+        card.setAttribute("aria-pressed", String(card.dataset.filter === controls.filter.value));
+      });
+    }
+    function entryName(entry) { return String(entry.displayPath || entry.path || "").split(/[\\/]/).pop(); }
+    function extensionOf(name) {
+      const dot = name.lastIndexOf(".");
+      return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toLocaleLowerCase().slice(0, 12) : "(none)";
+    }
+    function buildSnapshotStats() {
+      document.getElementById("kind").textContent = "Snapshot";
+      const files = [];
+      for (const entry of report.entries || []) if (entry.type === "file") files.push(entry);
+      let largest = null;
+      const byType = new Map();
+      let fileBytes = 0n;
+      for (const entry of files) {
+        const size = toBig(entry.sizeBytes);
+        fileBytes += size;
+        if (!largest || size > largest.size) largest = {size, name:entryName(entry)};
+        const ext = extensionOf(entryName(entry));
+        const bucket = byType.get(ext) || {bytes:0n, count:0};
+        bucket.bytes += size; bucket.count++; byType.set(ext, bucket);
+      }
+      const otherCount = toBig(reportHeader.otherCount);
+      addStat("Files", formatCount(reportHeader.fileCount), null);
+      addStat("Folders", formatCount(reportHeader.directoryCount), otherCount > 0n ? "+ " + formatCount(otherCount) + " links / other" : null);
+      addStat("Total size", formatBytes(reportHeader.totalFileBytes), "Files only");
+      if (largest) addStat("Largest file", formatBytes(largest.size), largest.name);
+      addStat("Scan time", formatDuration(reportHeader.startedAtUtc, reportHeader.completedAtUtc), null);
+      const warnings = Number(reportHeader.warningCount || (report.warnings || []).length || 0);
+      addStat("Warnings", warnings.toLocaleString(), warnings ? "See details below" : "Clean scan", warnings ? "warn" : null);
+
+      const when = document.getElementById("when");
+      when.textContent = "Captured " + formatDate(reportHeader.completedAtUtc);
+      when.hidden = !reportHeader.completedAtUtc;
+
+      if (fileBytes <= 0n) return;
+      const ranked = [...byType.entries()].sort((a, b) => (a[1].bytes < b[1].bytes ? 1 : a[1].bytes > b[1].bytes ? -1 : 0));
+      const top = ranked.slice(0, 6);
+      const rest = ranked.slice(6).reduce((sum, item) => ({bytes:sum.bytes + item[1].bytes, count:sum.count + item[1].count}), {bytes:0n, count:0});
+      const segments = top.map((item, index) => ({label:item[0], bytes:item[1].bytes, count:item[1].count, color:"var(--c" + (index + 1) + ")"}));
+      if (rest.count) segments.push({label:"other", bytes:rest.bytes, count:rest.count, color:"var(--c7)"});
+      const bar = document.getElementById("typeBar"), legend = document.getElementById("typeLegend");
+      for (const segment of segments) {
+        const percent = Number(segment.bytes * 10000n / fileBytes) / 100;
+        const tip = segment.label + " · " + formatBytes(segment.bytes) + " · " + segment.count.toLocaleString() + " files";
+        const part = element("span"); part.style.flex = String(Math.max(percent, 0.4)) + " 1 0"; part.style.background = segment.color; part.title = tip;
+        bar.appendChild(part);
+        const item = element("li"); item.title = tip;
+        const swatch = element("span", "swatch"); swatch.style.background = segment.color; item.appendChild(swatch);
+        item.appendChild(element("b", null, segment.label));
+        item.appendChild(element("span", null, formatBytes(segment.bytes) + " · " + percent.toFixed(percent >= 10 ? 0 : 1) + "%"));
+        legend.appendChild(item);
+      }
+      document.getElementById("typebar").hidden = false;
+    }
+    function buildComparisonStats() {
+      document.getElementById("kind").textContent = "Comparison";
+      const counts = {added:[0,0], removed:[0,0], modified:[0,0], review:[0,0]};
+      let addedBytes = 0n, removedBytes = 0n, net = 0n;
+      for (const entry of report.entries || []) {
+        const after = entry.after || {}, before = entry.before || {};
+        const slot = (after.type || before.type) === "directory" ? 1 : 0;
+        const bucket = entry.change === "uncertain" || entry.change === "scope_difference" ? "review" : entry.change;
+        if (counts[bucket]) counts[bucket][slot]++;
+        if (entry.change === "added" || entry.change === "removed" || entry.change === "modified") {
+          const afterBytes = after.type === "file" ? toBig(after.sizeBytes) : 0n;
+          const beforeBytes = before.type === "file" ? toBig(before.sizeBytes) : 0n;
+          net += afterBytes - beforeBytes;
+          if (afterBytes > beforeBytes) addedBytes += afterBytes - beforeBytes;
+          if (beforeBytes > afterBytes) removedBytes += beforeBytes - afterBytes;
+        }
+      }
+      const detail = pair => pair[0].toLocaleString() + " files · " + pair[1].toLocaleString() + " folders";
+      const total = pair => (pair[0] + pair[1]).toLocaleString();
+      addStat("Added", total(counts.added), detail(counts.added), "added", "added");
+      addStat("Deleted", total(counts.removed), detail(counts.removed), "removed", "removed");
+      addStat("Modified", total(counts.modified), detail(counts.modified), "modified", "modified");
+      addStat("Needs review", total(counts.review), counts.review[0] + counts.review[1] ? "Uncertain or out of scope" : "Nothing uncertain", counts.review[0] + counts.review[1] ? "warn" : null, "warning");
+      addStat("Net size change", formatSignedBytes(net), formatBytes(addedBytes) + " in · " + formatBytes(removedBytes) + " out");
+
+      const when = document.getElementById("when");
+      when.textContent = formatDate(reportHeader.beforeCompletedAtUtc) + "  →  " + formatDate(reportHeader.afterCompletedAtUtc);
+      when.hidden = !(reportHeader.beforeCompletedAtUtc && reportHeader.afterCompletedAtUtc);
+      if (reportHeader.ignoreRulesDiffer) noticesElement.appendChild(element("div", "notice", "Ignore rules differ between these snapshots, so some differences may come from scope rather than real changes."));
+      const beforeWarnings = Number(reportHeader.beforeWarningCount || 0), afterWarnings = Number(reportHeader.afterWarningCount || 0);
+      if (beforeWarnings || afterWarnings) noticesElement.appendChild(element("div", "notice", "Scan warnings: " + beforeWarnings.toLocaleString() + " in the earlier snapshot, " + afterWarnings.toLocaleString() + " in the later one."));
+    }
+
     titleElement.textContent = reportTitle();
     document.title = titleElement.textContent + " · FolderSnap";
-    for (const warning of report.warnings || []) {
-      const row=document.createElement("div"); row.className="warning"; row.textContent=(warning.path || "Root") + " · " + (warning.message || "Scan warning"); warningElement.appendChild(row);
+    const rootPathElement = document.getElementById("rootpath");
+    rootPathElement.textContent = reportHeader.rootPath || "";
+    rootPathElement.hidden = !reportHeader.rootPath;
+    if (isComparison) buildComparisonStats(); else buildSnapshotStats();
+    statsElement.hidden = !statsElement.children.length;
+
+    const warningList = report.warnings || [];
+    if (warningList.length) {
+      const details = document.createElement("details");
+      const summary = element("summary", null, warningList.length.toLocaleString() + (warningList.length === 1 ? " scan warning" : " scan warnings"));
+      details.appendChild(summary);
+      for (const warning of warningList) {
+        details.appendChild(element("div", "warning", (warning.path || "Root") + " · " + (warning.message || "Scan warning")));
+      }
+      warningElement.appendChild(details);
     }
-    warningElement.hidden = !(report.warnings || []).length;
+    warningElement.hidden = !warningList.length;
     render();
   </script>
 </body>
